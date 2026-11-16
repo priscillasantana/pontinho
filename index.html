@@ -101,6 +101,46 @@ button{font:inherit;cursor:pointer}
 #toast.on{opacity:.97;pointer-events:auto}
 #toast{display:flex;align-items:center;gap:10px;text-align:left;padding:10px 8px 10px 16px;width:min(88vw,380px);justify-content:space-between;bottom:calc(env(safe-area-inset-bottom) + 190px)!important}
 #toast button{flex:0 0 auto;width:32px;height:32px;border:0;border-radius:50%;background:rgba(255,255,255,.15);color:#fff;font-size:20px;line-height:1}
+/* ---------- responsive: laptop, tablet, phone sideways ---------- */
+#hand .card{font-size:calc(var(--cw)*.33)}
+@media (hover:hover) and (pointer:fine){
+  #hand .card:not(.sel):not(.dragging):hover{transform:translateY(-6px)}
+  .meld:hover,#stockP:hover .stack,#discP:hover .stack{filter:brightness(1.1)}
+}
+@media (min-width:700px){#app{max-width:760px}}
+/* wide or sideways: piles go beside the table so the hand stays in view */
+@media (min-width:700px) and (orientation:landscape),(min-width:900px){
+  #app{display:grid;max-width:1100px;padding-left:20px;padding-right:20px;column-gap:18px;
+    grid-template-columns:auto minmax(0,1fr);grid-template-rows:auto auto minmax(0,1fr) auto auto auto;
+    grid-template-areas:"hd hd" "op op" "mid tb" "hand hand" "me me" "bar bar"}
+  header{grid-area:hd}#opps{grid-area:op}#table{grid-area:tb;margin:10px 0}#hand{grid-area:hand}#me{grid-area:me}
+  #mid{grid-area:mid;flex-direction:column;justify-content:center;gap:16px;margin:10px 0}
+  #bar{grid-area:bar;width:100%;max-width:520px;justify-self:center}
+}
+/* big screens: everything a size up */
+@media (min-width:740px) and (min-height:620px){
+  h1{font-size:26px}
+  .seat{max-width:240px}
+  .fan{height:72px}.fan .card{width:40px;margin-left:-20px}
+  .plate b{font-size:16px}.plate small{font-size:13px}
+  .stack,.pile .card{width:80px}.pile .card{font-size:26px}.pile{font-size:14px}
+  .meld .card{width:44px;font-size:17px;margin-right:-15px;padding:4px 0 0 4px}
+  #table{gap:10px;padding:12px}
+  #hand{min-height:calc(var(--cw)*1.4 + 32px);padding-top:22px}
+  #me{font-size:14px}
+  #toast{bottom:calc(env(safe-area-inset-bottom) + 270px)!important}
+}
+/* phone sideways: squeeze the height */
+@media (orientation:landscape) and (max-height:500px){
+  header{padding:2px 0}h1{font-size:18px}.ib{min-height:32px;padding:5px 12px}
+  .fan{height:28px}.fan .card{width:20px;margin-left:-10px;border-width:1.5px}
+  .plate{padding:2px 6px}.plate b{display:inline;font-size:13px;margin-right:6px}
+  .stack,.pile .card{width:42px}.pile .card{font-size:15px}.pile{font-size:12px}
+  #mid{gap:8px;margin:6px 0}#table{margin:6px 0}
+  #hand{min-height:calc(var(--cw)*1.4 + 18px);padding:14px 0 4px}
+  #bar{padding-top:4px}#bar button{min-height:40px}#bar .seg button{min-height:34px}
+  #toast{bottom:calc(env(safe-area-inset-bottom) + 130px)!important}
+}
 @media (prefers-reduced-motion:reduce){.card{transition:none}}
 </style>
 </head>
@@ -558,7 +598,9 @@ $('fsBtn').onclick=async()=>{
 /* ---------- keep the whole hand on one row ---------- */
 function fitHand(){
   const h=$('hand'),W=h.clientWidth,n=h.querySelectorAll('.card').length;if(!W||!n)return;
-  const cw=Math.round(Math.min(58,Math.max(44,W*0.135)));
+  const big=innerWidth>=740&&innerHeight>=620,short=innerHeight<=500&&innerWidth>innerHeight;
+  const cap=big?Math.min(92,innerHeight*.12):short?Math.min(52,innerHeight*.15):58;
+  const cw=Math.round(Math.min(cap,Math.max(short?36:44,W*0.135)));
   const ov=n*cw+(n-1)*4<=W?4:(W-cw)/(n-1)-cw;
   h.style.setProperty('--cw',cw+'px');h.style.setProperty('--ov',ov.toFixed(1)+'px');
 }
@@ -600,7 +642,7 @@ window.addEventListener('pointermove',e=>{
   if(!drag.on){if(Math.hypot(e.clientX-drag.x0,e.clientY-drag.y0)<9)return;
     drag.on=true;const r=drag.el.getBoundingClientRect();drag.ox=drag.x0-r.left;drag.oy=drag.y0-r.top;
     drag.group=sel.has(drag.id)?[...sel]:[drag.id];
-    ghost=drag.el.cloneNode(true);ghost.classList.remove('sel','must');ghost.classList.add('ghost');ghost.style.width=r.width+'px';
+    ghost=drag.el.cloneNode(true);ghost.classList.remove('sel','must');ghost.classList.add('ghost');ghost.style.width=r.width+'px';ghost.style.fontSize=getComputedStyle(drag.el).fontSize;
     if(drag.group.length>1)ghost.insertAdjacentHTML('beforeend',`<span class="ghost-n">${drag.group.length}</span>`);
     document.body.appendChild(ghost);drag.el.classList.add('dragging');}
   e.preventDefault();
