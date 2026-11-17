@@ -20,9 +20,7 @@
 *{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;background:radial-gradient(ellipse at 50% 20%,#15301f,var(--deep) 75%);color:#e6ebe7;font:15px/1.4 -apple-system,system-ui,"Segoe UI",sans-serif;overscroll-behavior:none;user-select:none;-webkit-user-select:none;overflow:hidden}
 #app{display:flex;flex-direction:column;height:100%;max-width:560px;margin:0 auto;padding:calc(env(safe-area-inset-top) + 4px) 10px calc(env(safe-area-inset-bottom) + 16px)}
-#ver{position:fixed;right:calc(env(safe-area-inset-right) + 6px);bottom:calc(env(safe-area-inset-bottom) + 1px);z-index:5;border:0;background:none;padding:2px 4px;font-size:10px;line-height:1.2;color:#e6ebe7;opacity:.4;letter-spacing:.3px}
-#ver:hover{opacity:.8}
-.chg h3{margin:14px 0 2px;font-size:16px}.chg h3 small{font-weight:400;opacity:.65;margin-left:6px;font-size:13px}.chg ul{margin:4px 0}
+#ver{position:fixed;right:calc(env(safe-area-inset-right) + 6px);bottom:calc(env(safe-area-inset-bottom) + 1px);z-index:5;pointer-events:none;user-select:none;padding:2px 4px;font-size:10px;line-height:1.2;color:#e6ebe7;opacity:.4;letter-spacing:.3px}
 header{display:flex;align-items:center;justify-content:space-between;padding:6px 0}
 h1{font-size:22px;margin:0;font-weight:800;letter-spacing:.3px}
 h1 span{color:var(--gold)}
@@ -178,19 +176,11 @@ button{font:inherit;cursor:pointer}
 </div>
 <div id="ov"></div>
 <div id="toast"></div>
-<button id="ver" aria-label="Versão do jogo e novidades"></button>
+<div id="ver" aria-hidden="true"></div>
 <script>
 {
-/* ---------- version: bump VERSION and add an entry to CHANGES (and CHANGELOG.md) with every update ---------- */
-const VERSION='1.4.0';
-const CHANGES=[
-  {v:'1.4.0',d:'17/11/2026',items:['Número da versão no canto da tela.','Tela de Novidades com o histórico de atualizações.']},
-  {v:'1.3.1',d:'17/11/2026',items:['Dá para escolher o nível ao começar um Novo jogo pelo menu.']},
-  {v:'1.3.0',d:'17/11/2026',items:['Níveis contra o computador: Iniciante, Intermediário e Avançado.','Iniciante: botão Dica e um computador que erra de vez em quando.','Avançado: o computador lembra das cartas que já saíram, evita te dar cartas úteis e pode guardar os jogos para baixar tudo de uma vez.']},
-  {v:'1.2.0',d:'17/11/2026',items:['No jogo de duas pessoas, cada um digita o seu nome.']},
-  {v:'1.1.0',d:'16/11/2026',items:['O jogo se adapta a notebook, tablet e celular deitado.']},
-  {v:'1.0.0',d:'16/11/2026',items:['Primeira versão publicada: contra o computador (2 a 4 jogadores) ou duas pessoas no mesmo celular.']},
-];
+/* ---------- version: bump with every update, add an entry to CHANGELOG.md and tag the commit ---------- */
+const VERSION='1.4.1';
 const RANKS=['★','A','2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const SUITS=['♠','♥','♣','♦'];
 const NAMES=['Você','Ana','Beto','Caio'];const PNAMES=['Jogador 1','Jogador 2'];
@@ -643,7 +633,7 @@ function showMenu(first){
     <div class="row3"><button class="big-btn" data-act="new" data-n="1">2</button><button class="big-btn" data-act="new" data-n="2">3</button><button class="big-btn" data-act="new" data-n="3">4</button></div>
     <p style="margin-top:16px"><b>Duas pessoas</b> no mesmo celular, passando a vez:</p>
     <button class="big-btn" data-act="pass">2 jogadores</button>
-    <button class="big-btn sec" data-act="rules">Como jogar</button><button class="big-btn sec" data-act="news">Novidades · v${VERSION}</button>${first?'':'<button class="big-btn sec" data-act="close">Voltar ao jogo</button>'}</div></div>`;
+    <button class="big-btn sec" data-act="rules">Como jogar</button>${first?'':'<button class="big-btn sec" data-act="close">Voltar ao jogo</button>'}</div></div>`;
 }
 const NKEY='pontinho-names';
 const cleanName=v=>v.replace(/[<>&"'`]/g,'').replace(/\s+/g,' ').trim().slice(0,14);
@@ -659,12 +649,6 @@ function showNames(){
   const ins=f.querySelectorAll('input');
   ins.forEach((x,i)=>x.addEventListener('keydown',e=>{if(e.key==='Enter'&&i<ins.length-1){e.preventDefault();ins[i+1].focus();}}));
   if(matchMedia('(pointer:fine)').matches)ins[0].focus();
-}
-function showNews(){
-  const ov=$('ov');ov.dataset.menu='1';
-  ov.innerHTML=`<div class="ov"><div class="panel chg"><h2>Novidades</h2><p style="margin:0;opacity:.8">Você está na versão ${VERSION}.</p>
-  ${CHANGES.map(c=>`<h3>v${c.v}<small>${c.d}</small></h3><ul>${c.items.map(i=>`<li>${i}</li>`).join('')}</ul>`).join('')}
-  <button class="big-btn" data-act="${S?'close':'back'}">${S?'Voltar ao jogo':'Voltar'}</button></div></div>`;
 }
 function showRules(){
   const ov=$('ov');ov.dataset.menu='1';
@@ -701,7 +685,6 @@ document.addEventListener('click',e=>{
     else if(act==='back2')showMenu(false);
     else if(act==='restartok'){const n=S.players.length-1,pass=S.mode==='pass';delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(n,pass,pass?S.players.map(p=>p.name):null,pass?null:lvlPick);}
     else if(act==='rules')showRules();
-    else if(act==='news')showNews();
     else if(act==='close'){delete ov.dataset.menu;ov.innerHTML='';render();}
     else if(act==='back')showMenu(!S);
     else if(act==='next'){startRound();}
@@ -727,7 +710,7 @@ $('hintBtn').onclick=e=>{e.stopPropagation();hint();};
 $('sortBtn').onclick=()=>{if(!S||S.handoff||(drag&&drag.on))return;me().hand=sortBy(me().hand,sortMode);save();render();};
 $('seg').onclick=e=>{const b=e.target.closest('[data-sort]');if(!b)return;sortMode=b.dataset.sort;save();render();};
 $('menuBtn').onclick=()=>showMenu(false);
-$('ver').textContent='v'+VERSION;$('ver').onclick=e=>{e.stopPropagation();showNews();};
+$('ver').textContent='v'+VERSION;
 const standalone=navigator.standalone||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches);
 if(standalone)$('fsBtn').hidden=true;
 function fsHelp(){const ov=$('ov');ov.dataset.menu='1';

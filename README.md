@@ -6,4 +6,4 @@ Jogue em: https://priscillasantana.github.io/pontinho/
 
 No iPhone, abra no Safari e toque em **Compartilhar → Adicionar à Tela de Início** para jogar em tela cheia, como um app.
 
-Versão atual e histórico de mudanças: [CHANGELOG.md](CHANGELOG.md). No jogo, toque no número da versão no canto da tela para ver as novidades.
+Versão atual e histórico de mudanças: [CHANGELOG.md](CHANGELOG.md). No jogo, a versão aparece no canto inferior direito da tela.

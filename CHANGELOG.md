@@ -1,7 +1,10 @@
 # Histórico de versões
 
 Cada atualização ganha um número de versão (`maior.menor.correção`), uma entrada aqui e uma tag no GitHub.
-No jogo, a versão aparece no canto inferior direito; tocar nela abre a tela de Novidades.
+No jogo, a versão aparece no canto inferior direito.
+
+## v1.4.1 — 17/11/2026
+- Removida a tela de Novidades; o histórico fica só aqui no repositório.
 
 ## v1.4.0 — 17/11/2026
 - Número da versão no canto da tela.
