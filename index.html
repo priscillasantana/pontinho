@@ -180,7 +180,7 @@ button{font:inherit;cursor:pointer}
 <script>
 {
 /* ---------- version: bump with every update, add an entry to CHANGELOG.md and tag the commit ---------- */
-const VERSION='1.4.1';
+const VERSION='1.5.0';
 const RANKS=['★','A','2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const SUITS=['♠','♥','♣','♦'];
 const NAMES=['Você','Ana','Beto','Caio'];const PNAMES=['Jogador 1','Jogador 2'];
@@ -622,10 +622,19 @@ function renderOv(){
   }
   ov.innerHTML='';
 }
+let menuFirst=true;
 function showMenu(first){
-  const ov=$('ov');ov.dataset.menu='1';
+  menuFirst=first;const ov=$('ov');ov.dataset.menu='1';
   ov.innerHTML=`<div class="ov"><div class="panel"><h2>Pontinho</h2>
-    ${first?'':'<button class="big-btn" data-act="redeal">Nova partida</button><p style="margin:4px 0 0;font-size:13px;opacity:.75">Dá as cartas de novo e mantém os pontos de cada um.</p><button class="big-btn sec" data-act="restart">Novo jogo</button><p style="margin:4px 0 0;font-size:13px;opacity:.75">Zera os pontos de todos e começa do zero.</p><p style="margin:16px 0 0;opacity:.8">Ou comece um novo jogo com outras opções:</p>'}
+    ${first?'':'<button class="big-btn" data-act="redeal">Nova partida</button>'}
+    <button class="big-btn${first?'':' sec'}" data-act="setup">Novo jogo</button>
+    <button class="big-btn sec" data-act="rules">Como jogar</button>${first?'':'<button class="big-btn sec" data-act="close">Voltar ao jogo</button>'}</div></div>`;
+}
+function showSetup(){
+  const ov=$('ov');ov.dataset.menu='1';
+  const live=S&&!S.over&&!menuFirst;
+  ov.innerHTML=`<div class="ov"><div class="panel"><h2>Novo jogo</h2>
+    ${live?'<p style="margin:0;font-size:13px;opacity:.75">Os pontos do jogo atual serão zerados.</p>':''}
     <p style="margin-bottom:0"><b>Contra o computador</b> — nível:</p>
     <div class="lvl">${Object.keys(LV).map(k=>`<button data-act="lvl" data-l="${k}" class="${k===lvlPick?'on':''}">${LV[k]}</button>`).join('')}</div>
     <p class="lvl-d" id="lvlD">${LVD[lvlPick]}</p>
@@ -633,7 +642,7 @@ function showMenu(first){
     <div class="row3"><button class="big-btn" data-act="new" data-n="1">2</button><button class="big-btn" data-act="new" data-n="2">3</button><button class="big-btn" data-act="new" data-n="3">4</button></div>
     <p style="margin-top:16px"><b>Duas pessoas</b> no mesmo celular, passando a vez:</p>
     <button class="big-btn" data-act="pass">2 jogadores</button>
-    <button class="big-btn sec" data-act="rules">Como jogar</button>${first?'':'<button class="big-btn sec" data-act="close">Voltar ao jogo</button>'}</div></div>`;
+    <button class="big-btn sec" data-act="back">Voltar</button></div></div>`;
 }
 const NKEY='pontinho-names';
 const cleanName=v=>v.replace(/[<>&"'`]/g,'').replace(/\s+/g,' ').trim().slice(0,14);
@@ -644,7 +653,7 @@ function showNames(){
     <form id="namesF" autocomplete="off">
     ${PNAMES.map((d,i)=>`<label class="fld">Nome de quem joga ${i+1}<input maxlength="14" placeholder="${d}" value="${last[i]?cleanName(String(last[i])):''}" enterkeyhint="${i<PNAMES.length-1?'next':'go'}"></label>`).join('')}
     <button class="big-btn" type="submit" data-act="passgo">Começar</button></form>
-    <button class="big-btn sec" data-act="back">Voltar</button></div></div>`;
+    <button class="big-btn sec" data-act="setup">Voltar</button></div></div>`;
   const f=$('namesF');f.addEventListener('submit',e=>e.preventDefault());
   const ins=f.querySelectorAll('input');
   ins.forEach((x,i)=>x.addEventListener('keydown',e=>{if(e.key==='Enter'&&i<ins.length-1){e.preventDefault();ins[i+1].focus();}}));
@@ -678,17 +687,13 @@ document.addEventListener('click',e=>{
       delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(1,true,nm);}
     else if(act==='redeal'){ov.innerHTML=`<div class="ov"><div class="panel"><h2>Nova partida?</h2><p>As cartas desta partida serão recolhidas e distribuídas de novo. Os pontos de cada um continuam como estão.</p><div class="row3"><button class="big-btn sec" data-act="back2">Cancelar</button><button class="big-btn" data-act="redealok">Começar</button></div></div></div>`;}
     else if(act==='redealok'){delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;S.gid=Math.random();S.roundEnd=null;startRound();}
-    else if(act==='restart'){const bots=S.mode==='bots';if(bots&&LV[S.level])lvlPick=S.level;
-      ov.innerHTML=`<div class="ov"><div class="panel"><h2>Novo jogo?</h2><p>Os pontos de todos voltam a zero.</p>${bots?`<p style="margin-bottom:0"><b>Nível:</b></p>
-      <div class="lvl">${Object.keys(LV).map(k=>`<button data-act="lvl" data-l="${k}" class="${k===lvlPick?'on':''}">${LV[k]}</button>`).join('')}</div>
-      <p class="lvl-d" id="lvlD">${LVD[lvlPick]}</p>`:''}<div class="row3"><button class="big-btn sec" data-act="back2">Cancelar</button><button class="big-btn" data-act="restartok">Começar</button></div></div></div>`;}
+    else if(act==='setup'){if(S&&LV[S.level])lvlPick=S.level;showSetup();}
     else if(act==='back2')showMenu(false);
-    else if(act==='restartok'){const n=S.players.length-1,pass=S.mode==='pass';delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(n,pass,pass?S.players.map(p=>p.name):null,pass?null:lvlPick);}
     else if(act==='rules')showRules();
     else if(act==='close'){delete ov.dataset.menu;ov.innerHTML='';render();}
-    else if(act==='back')showMenu(!S);
+    else if(act==='back')showMenu(menuFirst);
     else if(act==='next'){startRound();}
-    else if(act==='newmenu'){S.roundEnd=null;showMenu(true);}
+    else if(act==='newmenu'){S.roundEnd=null;menuFirst=true;showSetup();}
     else if(act==='reveal'){S.handoff=false;S.view=S.turn;sel.clear();save();render();}
     return;}
   if(!S||$('ov').innerHTML)return;
