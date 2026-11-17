@@ -180,7 +180,7 @@ button{font:inherit;cursor:pointer}
 <script>
 {
 /* ---------- version: bump with every update, add an entry to CHANGELOG.md and tag the commit ---------- */
-const VERSION='1.5.0';
+const VERSION='1.5.1';
 const RANKS=['★','A','2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const SUITS=['♠','♥','♣','♦'];
 const NAMES=['Você','Ana','Beto','Caio'];const PNAMES=['Jogador 1','Jogador 2'];
@@ -625,9 +625,10 @@ function renderOv(){
 let menuFirst=true;
 function showMenu(first){
   menuFirst=first;const ov=$('ov');ov.dataset.menu='1';
+  const live=!first&&S&&!S.over;
   ov.innerHTML=`<div class="ov"><div class="panel"><h2>Pontinho</h2>
-    ${first?'':'<button class="big-btn" data-act="redeal">Nova partida</button>'}
-    <button class="big-btn${first?'':' sec'}" data-act="setup">Novo jogo</button>
+    ${live?'<button class="big-btn" data-act="redeal">Nova partida</button>':''}
+    <button class="big-btn${live?' sec':''}" data-act="setup">Novo jogo</button>
     <button class="big-btn sec" data-act="rules">Como jogar</button>${first?'':'<button class="big-btn sec" data-act="close">Voltar ao jogo</button>'}</div></div>`;
 }
 function showSetup(){

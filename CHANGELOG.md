@@ -3,6 +3,9 @@
 Cada atualização ganha um número de versão (`maior.menor.correção`), uma entrada aqui e uma tag no GitHub.
 No jogo, a versão aparece no canto inferior direito.
 
+## v1.5.1 — 17/11/2026
+- Nova partida só aparece no menu quando há um jogo em andamento.
+
 ## v1.5.0 — 17/11/2026
 - Menu mais simples: Nova partida, Novo jogo, Como jogar e Voltar ao jogo.
 - Novo jogo abre uma segunda tela para escolher o nível e o número de jogadores.
