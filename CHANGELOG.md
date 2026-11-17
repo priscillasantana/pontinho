@@ -3,6 +3,12 @@
 Cada atualização ganha um número de versão (`maior.menor.correção`), uma entrada aqui e uma tag no GitHub.
 No jogo, a versão aparece no canto inferior direito.
 
+## v1.6.0 — 17/11/2026
+- Jogo online: duas pessoas, cada uma no seu celular. Em Novo jogo, uma cria a sala e passa o código de 4 letras (ou o link de convite); a outra entra com o código.
+- O celular de quem criou a sala comanda o jogo e manda para o outro só as cartas que ele pode ver.
+- Se a conexão cair ou um dos celulares fechar o jogo, ele reconecta sozinho na mesma sala.
+- No fim do jogo online: Jogar de novo ou Sair da sala.
+
 ## v1.5.1 — 17/11/2026
 - Nova partida só aparece no menu quando há um jogo em andamento.
 

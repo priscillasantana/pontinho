@@ -26,6 +26,9 @@ h1{font-size:22px;margin:0;font-weight:800;letter-spacing:.3px}
 h1 span{color:var(--gold)}
 h1 small{font-size:12px;font-weight:700;letter-spacing:0;vertical-align:middle;margin-left:8px;padding:3px 8px;border-radius:8px;background:rgba(255,255,255,.12);color:#cfd6d1}
 h1 small:empty{display:none}
+h1 small.off{background:#7a2b2b;color:#fff}
+.code{font-size:44px;font-weight:900;letter-spacing:10px;color:var(--gold);margin:6px 0 10px;padding-left:10px}
+.fld input.codein{text-transform:uppercase;letter-spacing:6px;font-weight:800;font-size:22px}
 .lvl{display:flex;background:rgba(255,255,255,.1);border-radius:13px;padding:3px;gap:3px;margin-top:6px}
 .lvl button{flex:1;min-height:42px;border:0;border-radius:10px;background:transparent;color:#cfd6d1;font-weight:700;font-size:13px;letter-spacing:-.2px;white-space:nowrap;padding:0 2px}
 .lvl button.on{background:#e6ebe7;color:#141a17}
@@ -180,7 +183,7 @@ button{font:inherit;cursor:pointer}
 <script>
 {
 /* ---------- version: bump with every update, add an entry to CHANGELOG.md and tag the commit ---------- */
-const VERSION='1.5.1';
+const VERSION='1.6.0';
 const RANKS=['★','A','2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const SUITS=['♠','♥','♣','♦'];
 const NAMES=['Você','Ana','Beto','Caio'];const PNAMES=['Jogador 1','Jogador 2'];
@@ -199,7 +202,7 @@ const label=c=>c.r===0?'Coringa':RANKS[c.r]+SUITS[c.s];
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];}return a;}
 function newDeck(){const d=[];let id=0;for(let k=0;k<2;k++){for(let s=0;s<4;s++)for(let r=1;r<=13;r++)d.push({id:id++,r,s});d.push({id:id++,r:0,s:-1});}return shuffle(d);}
 
-function save(){try{localStorage.setItem(KEY,JSON.stringify({S,sortMode,undoSnap}));}catch(e){}}
+function save(){if(NET.role==='guest')return;try{localStorage.setItem(KEY,JSON.stringify({S,sortMode,undoSnap}));}catch(e){}netSync();}
 function load(){try{const d=JSON.parse(localStorage.getItem(KEY));if(d&&d.S){S=d.S;sortMode=d.sortMode||'suit';undoSnap=d.undoSnap||null;return true;}}catch(e){}return false;}
 
 let tt;function toast(t){const el=$('toast');el.innerHTML='<span></span><button aria-label="Fechar">×</button>';el.firstChild.textContent=t;el.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>el.classList.remove('on'),4400);}
@@ -322,7 +325,7 @@ function startRound(){
   if(S.mode==='pass'){S.handoff=true;}
   sel.clear();undoSnap=null;save();
   anim=true;render();
-  const gid=S.gid;requestAnimationFrame(async()=>{await dealAnim();if(S.gid!==gid)return;anim=false;render();maybeBot();});
+  const gid=S.gid;requestAnimationFrame(async()=>{if(!S||S.gid!==gid)return;await dealAnim();if(!S||S.gid!==gid)return;anim=false;render();maybeBot();});
 }
 function drawStock(i){
   if(!S.stock.length&&S.discard.length>1){const top=S.discard.pop();S.stock=shuffle(S.discard);S.discard=[top];}
@@ -343,65 +346,79 @@ function endRound(w){
   undoSnap=null;sel.clear();busy=false;anim=false;save();render();
 }
 
-/* ---------- human actions ---------- */
+/* ---------- human actions ----------
+   act() is the only place a person's move changes the game (local or online); animEv() animates it; settle() ends it. */
 const myTurn=()=>S&&!S.roundEnd&&!S.handoff&&!anim&&S.turn===S.view&&!S.players[S.turn].bot&&!busy;
 const me=()=>S.players[S.view];
-const you=()=>S.mode==='bots'?'Você':S.players[S.view].name;
-async function humanDraw(){if(!myTurn()||S.phase!=='draw')return;const fr=rectOf(stockEl());
-  if(!drawStock(S.view))return;S.phase='play';const c=me().hand[me().hand.length-1];
-  anim=true;save();render();await flyTo(fr,cardHTML(c),handSel(c.id));anim=false;render();}
-async function humanTake(){if(!myTurn()||S.phase!=='draw'||!S.discard.length)return;const fr=rectOf(discEl());
-  undoSnap=JSON.stringify(S);const c=S.discard.pop();me().hand.push(c);(S.pickups=S.pickups||[]).push({p:S.view,c});S.mustUse=c.id;S.phase='play';
-  sel=new Set([c.id]);anim=true;save();render();await flyTo(fr,cardHTML(c),handSel(c.id));anim=false;render();}
-function cancelTake(){if(!undoSnap)return;S=JSON.parse(undoSnap);undoSnap=null;sel.clear();save();render();}
-function afterPlay(){hintK=-1;
-  if(S.mustUse!=null&&!me().hand.some(c=>c.id===S.mustUse)){S.mustUse=null;undoSnap=null;}
-  if(!me().hand.length){S.log=`${you()} bateu!`;endRound(S.view);return;}
+function act(i,a){
+  if(!S||S.roundEnd||S.turn!==i||!a)return{err:'Aguarde a sua vez.'};
+  const p=S.players[i],ids=Array.isArray(a.ids)?a.ids.map(Number):[];
+  const pick=()=>ids.map(id=>p.hand.find(c=>c.id===id)).filter(Boolean);
+  if(a.k==='draw'){if(S.phase!=='draw')return{err:''};if(!drawStock(i))return{};S.phase='play';return{ev:{k:'draw',p:i,c:p.hand[p.hand.length-1]}};}
+  if(a.k==='take'){if(S.phase!=='draw'||!S.discard.length)return{err:''};
+    undoSnap=JSON.stringify(S);const c=S.discard.pop();p.hand.push(c);(S.pickups=S.pickups||[]).push({p:i,c});S.mustUse=c.id;S.phase='play';
+    return{ev:{k:'take',p:i,c}};}
+  if(a.k==='undo'){if(!undoSnap)return{err:''};S=JSON.parse(undoSnap);undoSnap=null;return{ev:{k:'undo',p:i}};}
+  if(S.phase!=='play')return{err:'Primeiro compre do monte ou pegue do lixo.'};
+  if(a.k==='lay'){const cs=pick();if(cs.length<3)return{err:'Um jogo precisa de pelo menos 3 cartas.'};
+    const m=buildSet(cs)||buildRun(cs);
+    if(!m)return{err:'Jogo inválido. Use uma trinca (3–4 cartas do mesmo valor, naipes diferentes) ou uma sequência (3+ cartas seguidas do mesmo naipe).'};
+    m.owner=i;S.melds.push(m);const used=new Set(cs.map(c=>c.id));p.hand=p.hand.filter(c=>!used.has(c.id));
+    return{ev:{k:'lay',p:i,mk:S.melds.length-1,cs}};}
+  if(a.k==='add'){const k=Number(a.mk),sc=pick();if(!S.melds[k])return{err:''};
+    if(!sc.length)return{err:'Arraste cartas da mão até um jogo da mesa para encaixar.'};
+    let m=S.melds[k],pend=[...sc],got=[],prog=true;
+    while(pend.length&&prog){prog=false;for(const c of[...pend]){const r=tryAdd(m,c);if(r){m=r.m;if(r.joker)got.push(r.joker);pend=pend.filter(x=>x!==c);prog=true;}}}
+    const cs=sc.filter(c=>!pend.includes(c));
+    if(!cs.length)return{err:whyNot(S.melds[k],pend[0])};
+    const used=new Set(cs.map(c=>c.id));S.melds[k]=m;p.hand=p.hand.filter(c=>!used.has(c.id));p.hand.push(...got);
+    return{ev:{k:'add',p:i,mk:k,cs,got}};}
+  if(a.k==='disc'){if(ids.length!==1)return{err:'Arraste só uma carta para o lixo.'};
+    if(S.mustUse!=null&&p.hand.some(c=>c.id===S.mustUse))return{err:'Primeiro use a carta que pegou do lixo, ou toque em Desfazer.'};
+    const c=pick()[0];if(!c)return{err:''};p.hand=p.hand.filter(x=>x!==c);S.discard.push(c);return{ev:{k:'disc',p:i,c}};}
+  return{err:''};
+}
+/* animates a move that already changed S, reading card positions from the screen as it was before */
+async function animEv(ev){
+  const mine=ev.p===S.view,from=id=>mine?srcRect(id):seatRect(ev.p);let run=()=>[];
+  if(ev.k==='draw'){const fr=rectOf(stockEl());run=()=>[mine&&ev.c?flyTo(fr,cardHTML(ev.c),handSel(ev.c.id)):fly(fr,seatRect(ev.p),BACK)];}
+  else if(ev.k==='take'){const fr=rectOf(discEl());if(mine)sel=new Set([ev.c.id]);
+    run=()=>[mine?flyTo(fr,cardHTML(ev.c),handSel(ev.c.id)):fly(fr,seatRect(ev.p),cardHTML(ev.c))];}
+  else if(ev.k==='lay'){const frs=ev.cs.map(c=>from(c.id));if(mine)sel.clear();
+    run=()=>ev.cs.map((c,j)=>flyTo(frs[j],cardHTML(c),meldSel(ev.mk,c.id),{delay:j*120}));}
+  else if(ev.k==='add'){const frs=ev.cs.map(c=>from(c.id)),jfr=ev.got.map(j=>rectOf(q(meldSel(ev.mk,j.id))));
+    if(mine){const used=new Set(ev.cs.map(c=>c.id)),pend=me().hand.filter(c=>sel.has(c.id)&&!used.has(c.id));
+      sel=new Set([...pend.map(c=>c.id),...ev.got.map(c=>c.id)]);
+      if(pend.length)toast(pend.length===1?'Encaixei o que cabia. '+whyNot(S.melds[ev.mk],pend[0]):'Encaixei o que cabia. As outras cartas não cabem nesse jogo.');}
+    run=()=>[...ev.cs.map((c,j)=>flyTo(frs[j],cardHTML(c),meldSel(ev.mk,c.id),{delay:j*120})),
+      ...ev.got.map((c,j)=>mine?flyTo(jfr[j],cardHTML(c),handSel(c.id),{delay:400}):fly(jfr[j],seatRect(ev.p),cardHTML(c),{delay:400}))];}
+  else if(ev.k==='disc'){const fr=from(ev.c.id);if(mine)sel.clear();run=()=>[flyTo(fr,cardHTML(ev.c),'#discP .top')];}
+  else if(mine)sel.clear();
+  anim=true;render();await Promise.all(run());anim=false;
+}
+function settle(ev){
+  const i=ev.p,p=S.players[i],nm=S.mode==='bots'&&i===0?'Você':p.name;hintK=-1;
+  if(ev.k==='lay'||ev.k==='add'){if(S.mustUse!=null&&!p.hand.some(c=>c.id===S.mustUse)){S.mustUse=null;undoSnap=null;}
+    if(!p.hand.length){S.log=`${nm} bateu!`;endRound(i);return;}}
+  else if(ev.k==='disc'){if(!p.hand.length){S.log=`${nm} bateu!`;endRound(i);return;}S.log=`${nm} descartou ${label(ev.c)}.`;nextTurn();return;}
   save();render();
 }
-function selCards(){return me().hand.filter(c=>sel.has(c.id));}
-async function layDown(){
-  if(!myTurn()||S.phase!=='play')return;
-  const cs=selCards();const m=buildSet(cs)||buildRun(cs);
-  if(!m){toast('Jogo inválido. Use uma trinca (3–4 cartas do mesmo valor, naipes diferentes) ou uma sequência (3+ cartas seguidas do mesmo naipe).');return;}
-  const frs=cs.map(c=>srcRect(c.id));
-  m.owner=S.view;S.melds.push(m);const k=S.melds.length-1;me().hand=me().hand.filter(c=>!sel.has(c.id));sel.clear();
-  anim=true;render();await Promise.all(cs.map((c,j)=>flyTo(frs[j],cardHTML(c),meldSel(k,c.id),{delay:j*120})));anim=false;
-  afterPlay();
+async function runEv(ev){if(NET.role==='host')netSend({t:'ev',ev:evFor(ev),s:redact()});await animEv(ev);settle(ev);}
+async function play(a){
+  if(!myTurn())return;
+  if(NET.role==='guest'){if(!NET.up){toast('Sem conexão com a sala. Tentando reconectar…');return;}busy=true;render();netSend({t:'act',a});return;}
+  const r=act(S.view,a);
+  if(r.err!=null){if(r.err)toast(r.err);return;}
+  if(r.ev)await runEv(r.ev);
 }
+const humanDraw=()=>play({k:'draw'}),humanTake=()=>play({k:'take'}),cancelTake=()=>play({k:'undo'});
+const layDown=()=>play({k:'lay',ids:[...sel]}),addTo=k=>play({k:'add',mk:k,ids:[...sel]}),discard=()=>play({k:'disc',ids:[...sel]});
 function whyNot(m,c){
   if(c.r===0){if(m.type==='set')return'O coringa só entra em sequência, não em trinca.';
     if(m.cards.some(e=>e.c.r===0))return'Essa sequência já tem um coringa — só cabe um por sequência.';
     return'Essa sequência já está completa.';}
   if(m.type==='set')return'Essa carta não cabe nessa trinca.';
   return'Essa carta não encaixa nessa sequência.';
-}
-async function addTo(k){
-  if(!myTurn()||S.phase!=='play')return;
-  const sc=selCards();if(!sc.length){toast('Arraste cartas da mão até um jogo da mesa para encaixar.');return;}
-  let m=S.melds[k],pend=[...sc],got=[],prog=true;
-  while(pend.length&&prog){prog=false;for(const c of[...pend]){const r=tryAdd(m,c);if(r){m=r.m;if(r.joker)got.push(r.joker);pend=pend.filter(x=>x!==c);prog=true;}}}
-  const cs=sc.filter(c=>!pend.includes(c));
-  if(!cs.length){toast(whyNot(S.melds[k],pend[0]));return;}
-  const frs=cs.map(c=>srcRect(c.id)),jfr=got.map(j=>rectOf(q(meldSel(k,j.id))));
-  const used=new Set(cs.map(c=>c.id));
-  S.melds[k]=m;me().hand=me().hand.filter(c=>!used.has(c.id));me().hand.push(...got);
-  sel=new Set([...pend.map(c=>c.id),...got.map(c=>c.id)]);
-  if(pend.length)toast(pend.length===1?'Encaixei o que cabia. '+whyNot(m,pend[0]):'Encaixei o que cabia. As outras cartas não cabem nesse jogo.');
-  anim=true;render();
-  await Promise.all([...cs.map((c,j)=>flyTo(frs[j],cardHTML(c),meldSel(k,c.id),{delay:j*120})),...got.map((c,j)=>flyTo(jfr[j],cardHTML(c),handSel(c.id),{delay:400}))]);
-  anim=false;afterPlay();
-}
-async function discard(){
-  if(!myTurn()||S.phase!=='play')return;
-  if(sel.size!==1){toast('Arraste só uma carta para o lixo.');return;}
-  if(S.mustUse!=null&&me().hand.some(c=>c.id===S.mustUse)){toast('Primeiro use a carta que pegou do lixo, ou toque em Desfazer.');return;}
-  const id=[...sel][0],c=me().hand.find(x=>x.id===id);
-  const fr=srcRect(id);
-  me().hand=me().hand.filter(x=>x.id!==id);S.discard.push(c);sel.clear();
-  anim=true;render();await flyTo(fr,cardHTML(c),'#discP .top');anim=false;
-  if(!me().hand.length){S.log=`${you()} bateu!`;endRound(S.view);return;}
-  S.log=`${you()} descartou ${label(c)}.`;nextTurn();
 }
 
 /* ---------- bots ---------- */
@@ -595,9 +612,11 @@ function render(){
   fitHand();
   const hp=me().hand.reduce((t,c)=>t+pts(c),0);
   $('me').innerHTML=`<span><span class="nm ${S.turn===S.view&&!S.roundEnd?'turn':''}">${S.mode==='pass'?me().name:'Você'}</span> · ${me().pts} pts${me().out?' (fora)':''}</span><span>${hide?'':'Valor na mão: '+hp}</span>`;
-  $('cancelBtn').hidden=!(undoSnap&&myTurn());
+  $('cancelBtn').hidden=!((NET.role==='guest'?S.undo:undoSnap)&&myTurn());
   const easy=S.mode==='bots'&&lvl()==='easy';$('hintBtn').hidden=!easy;$('hintBtn').disabled=!myTurn();
-  $('lvlTag').textContent=S.mode==='bots'?LV[lvl()]:'';
+  const tag=$('lvlTag'),online=S.mode==='online';
+  tag.textContent=online?(NET.up?'Online':NET.role==='host'?`Aguardando ${S.players[1].name}…`:'Reconectando…'):S.mode==='bots'?LV[lvl()]:'';
+  tag.classList.toggle('off',online&&!NET.up);
   document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',b.dataset.sort===sortMode));
   renderOv();
 }
@@ -608,7 +627,7 @@ function renderOv(){
     const head=re.winner>=0?`${S.players[re.winner].name} bateu!`:'O monte acabou';
     let tail='';
     if(S.over){const cn=S.players[S.champ].name;
-      tail=`<p><b>${S.mode==='bots'&&S.champ===0?'Você venceu o jogo! 🎉':cn+' venceu o jogo! 🎉'}</b>${S.mode==='bots'&&me().out&&S.champ!==0?' Você passou de 100 pontos.':''}</p><button class="big-btn" data-act="newmenu">Novo jogo</button>`;}
+      tail=`<p><b>${S.mode!=='pass'&&S.champ===S.view?'Você venceu o jogo! 🎉':cn+' venceu o jogo! 🎉'}</b>${S.mode==='bots'&&me().out&&S.champ!==0?' Você passou de 100 pontos.':''}</p>${S.mode==='online'?'<button class="big-btn" data-act="again">Jogar de novo</button><button class="big-btn sec" data-act="leave">Sair da sala</button>':'<button class="big-btn" data-act="newmenu">Novo jogo</button>'}`;}
     else tail=`<button class="big-btn" data-act="next">Próxima partida</button>`;
     ov.innerHTML=`<div class="ov"><div class="panel"><h2>${head}</h2><p>As cartas que sobraram na mão contam pontos. Quem passar de 100 está fora.</p>
       <div class="res">${re.rows.map(r=>`<div class="r"><div class="top"><span>${r.name}${r.win?' ✓':''}</span><span class="${r.bust?'bust':''}">+${r.gain} → ${r.total}${r.bust?' · estourou':''}</span></div>${r.hand.length?`<div class="cards">${r.hand.map(c=>cardHTML(c)).join('')}</div>`:''}</div>`).join('')}</div>${tail}</div></div>`;
@@ -625,17 +644,18 @@ function renderOv(){
 let menuFirst=true;
 function showMenu(first){
   menuFirst=first;const ov=$('ov');ov.dataset.menu='1';
-  const live=!first&&S&&!S.over;
-  ov.innerHTML=`<div class="ov"><div class="panel"><h2>Pontinho</h2>
-    ${live?'<button class="big-btn" data-act="redeal">Nova partida</button>':''}
-    <button class="big-btn${live?' sec':''}" data-act="setup">Novo jogo</button>
+  const live=!first&&S&&!S.over,online=S&&S.mode==='online',redeal=live&&(!online||NET.role==='host');
+  ov.innerHTML=`<div class="ov"><div class="panel"><h2>Pontinho</h2>${online&&!first?`<p style="margin:0;opacity:.8">Sala ${NET.code} · online</p>`:''}
+    ${redeal?'<button class="big-btn" data-act="redeal">Nova partida</button>':''}
+    <button class="big-btn${redeal?' sec':''}" data-act="setup">Novo jogo</button>
+    ${online&&!first?'<button class="big-btn sec" data-act="leave">Sair da sala</button>':''}
     <button class="big-btn sec" data-act="rules">Como jogar</button>${first?'':'<button class="big-btn sec" data-act="close">Voltar ao jogo</button>'}</div></div>`;
 }
 function showSetup(){
   const ov=$('ov');ov.dataset.menu='1';
   const live=S&&!S.over&&!menuFirst;
   ov.innerHTML=`<div class="ov"><div class="panel"><h2>Novo jogo</h2>
-    ${live?'<p style="margin:0;font-size:13px;opacity:.75">Os pontos do jogo atual serão zerados.</p>':''}
+    ${live?`<p style="margin:0;font-size:13px;opacity:.75">${S.mode==='online'?'Começar outro jogo tira você da sala online.':'Os pontos do jogo atual serão zerados.'}</p>`:''}
     <p style="margin-bottom:0"><b>Contra o computador</b> — nível:</p>
     <div class="lvl">${Object.keys(LV).map(k=>`<button data-act="lvl" data-l="${k}" class="${k===lvlPick?'on':''}">${LV[k]}</button>`).join('')}</div>
     <p class="lvl-d" id="lvlD">${LVD[lvlPick]}</p>
@@ -643,6 +663,8 @@ function showSetup(){
     <div class="row3"><button class="big-btn" data-act="new" data-n="1">2</button><button class="big-btn" data-act="new" data-n="2">3</button><button class="big-btn" data-act="new" data-n="3">4</button></div>
     <p style="margin-top:16px"><b>Duas pessoas</b> no mesmo celular, passando a vez:</p>
     <button class="big-btn" data-act="pass">2 jogadores</button>
+    <p style="margin-top:16px"><b>Online</b>, cada um no seu celular:</p>
+    <div class="row3"><button class="big-btn" data-act="onhost">Criar sala</button><button class="big-btn" data-act="onjoin">Entrar</button></div>
     <button class="big-btn sec" data-act="back">Voltar</button></div></div>`;
 }
 const NKEY='pontinho-names';
@@ -671,21 +693,237 @@ function showRules(){
   <li>Arraste as cartas dentro da mão para reorganizar, ou escolha <b>Naipe</b> ou <b>Valor</b> e toque em <b>Ordenar</b>.</li>
   <li>Toque nas cartas para selecionar e depois toque no destino — ou arraste. Na <b>mesa</b> para baixar um jogo novo, num <b>jogo da mesa</b> para encaixar, no <b>lixo</b> para descartar (isso termina a sua vez).</li>
   <li>Quem ficar sem cartas <b>bate</b>. Os outros somam as cartas da mão: 2–10 valem o número, J/Q/K 10, Ás 15, coringa 20.</li>
-  <li>Quem passar de 100 pontos <b>estoura</b> e sai. O último que sobrar vence.</li></ul>
+  <li>Quem passar de 100 pontos <b>estoura</b> e sai. O último que sobrar vence.</li>
+  <li><b>Online:</b> em <i>Novo jogo</i>, uma pessoa toca em <b>Criar sala</b> e passa o código de 4 letras; a outra toca em <b>Entrar</b> e digita o código. O celular de quem criou a sala comanda o jogo, então ele precisa ficar com o jogo aberto.</li></ul>
   <button class="big-btn" data-act="${S?'close':'back'}">${S?'Voltar ao jogo':'Voltar'}</button></div></div>`;
+}
+
+/* ---------- online: two phones, PeerJS (WebRTC) ----------
+   The host's phone runs the game and is the only one that changes S. The guest sends its moves ({t:'act'}) and
+   gets back a copy of the game with the host's cards and the stock hidden (redact). A free public PeerJS server
+   only introduces the phones using the room code; the game itself travels phone to phone. */
+const PEERJS='https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js';
+const PEERJS_SRI='sha384-nlUQ8ZqCbvStErob+biJNzSgltf6urV3VGqhfIfzhmg9RXmpeRm76ELw0pYnKlTR';
+const PFX='pontinho-ps-',NETKEY='pontinho-net',CODE_ABC='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+let NET={role:null},peerLib=null,gChain=Promise.resolve(),hChain=Promise.resolve(),gT=null;
+const newCode=()=>Array.from({length:4},()=>CODE_ABC[Math.random()*CODE_ABC.length|0]).join('');
+const cleanCode=v=>String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'').slice(0,4);
+function loadPeer(){
+  return peerLib||(peerLib=new Promise((res,rej)=>{if(window.Peer)return res();
+    const sc=document.createElement('script');sc.src=PEERJS;sc.integrity=PEERJS_SRI;sc.crossOrigin='anonymous';
+    sc.onload=()=>res();sc.onerror=()=>{peerLib=null;sc.remove();rej(new Error('peerjs'));};document.head.appendChild(sc);}));
+}
+function saveNet(){try{localStorage.setItem(NETKEY,JSON.stringify({role:NET.role,code:NET.code,name:NET.name,tok:NET.tok}));}catch(e){}}
+function netSend(m){try{if(NET.conn&&NET.conn.open)NET.conn.send(m);}catch(e){}}
+/* what the guest (seat 1) may see */
+function redact(){
+  const s=JSON.parse(JSON.stringify(S));
+  s.players.forEach((p,i)=>{delete p.tok;if(i!==1)p.hand=Array(p.hand.length).fill(0);});
+  s.stock=Array(S.stock.length).fill(0);s.view=1;s.undo=!!undoSnap&&S.turn===1;
+  return s;
+}
+function evFor(ev){const e=JSON.parse(JSON.stringify(ev));if(e.k==='draw'&&e.p!==1)delete e.c;return e;}
+function netSync(extra){if(NET.role==='host'&&S&&S.mode==='online')netSend({t:'s',s:redact(),...extra});}
+/* everything that arrives from the other phone is treated as untrusted: numbers stay numbers, text is stripped */
+const STRK=new Set(['phase','mode','type','level','k','log']);
+function cleanIn(x,k){
+  if(Array.isArray(x))return x.slice(0,400).map(y=>cleanIn(y));
+  if(x&&typeof x==='object'){const o={};for(const key of Object.keys(x)){if(key==='__proto__'||key==='constructor')continue;o[key]=cleanIn(x[key],key);}return o;}
+  if(typeof x==='string')return k==='name'?cleanName(x):STRK.has(k)?x.replace(/[<>&"'`]/g,'').slice(0,200):'';
+  if(typeof x==='number')return Number.isFinite(x)?x:0;
+  return typeof x==='boolean'?x:null;
+}
+function netStatus(){
+  const st=$('onSt');if(st)st.textContent=NET.role==='host'?(NET.ready?'Aguardando a outra pessoa entrar…':'Abrindo a sala…'):'Conectando…';
+  if(S)render();
+}
+function netLeave(tell=true){
+  if(tell)netSend({t:'bye'});
+  const p=NET.peer;clearTimeout(gT);
+  if(p)setTimeout(()=>{try{p.destroy();}catch(e){}},tell?300:0);
+  const wasHost=NET.role==='host';NET={role:null};
+  try{localStorage.removeItem(NETKEY);}catch(e){}
+  if(S&&S.mode==='online'){S=null;if(wasHost)try{localStorage.removeItem(KEY);}catch(e){}
+    ['opps','stockP','discP','table','hand','me','lvlTag'].forEach(id=>$(id).innerHTML='');$('cancelBtn').hidden=$('hintBtn').hidden=true;}
+  busy=false;anim=false;$('lvlTag').classList.remove('off');
+}
+/* host */
+async function netHost(code,resume){
+  NET.role='host';NET.code=code;NET.ready=false;saveNet();
+  try{await loadPeer();}catch(e){netFail('Não consegui carregar a parte online. Confira a internet e tente de novo.');return;}
+  if(NET.role!=='host')return;
+  const open=()=>{
+    const p=new window.Peer(PFX+NET.code,{debug:0});NET.peer=p;
+    p.on('open',()=>{if(NET.peer!==p)return;NET.ready=true;netStatus();});
+    p.on('connection',c=>{if(NET.peer===p)hostConn(c);});
+    p.on('disconnected',()=>{setTimeout(()=>{if(NET.peer===p&&!p.destroyed&&p.disconnected)try{p.reconnect();}catch(e){}},2000);});
+    p.on('error',e=>{if(NET.peer!==p)return;
+      if(e.type==='unavailable-id'){p.destroy();
+        if(resume)setTimeout(()=>{if(NET.peer===p)open();},3000);       // the old connection still holds the code for a moment
+        else{NET.code=newCode();saveNet();showWaiting();open();}}
+      else if(e.type==='browser-incompatible')netFail('Este navegador não consegue jogar online.');
+      else setTimeout(()=>{if(NET.peer===p&&!p.destroyed&&p.disconnected)try{p.reconnect();}catch(_){}},3000);});
+  };
+  open();
+}
+function hostConn(c){
+  c.on('data',d=>{
+    if(!d||typeof d!=='object')return;
+    if(d.t==='hello'){
+      const tok=String(d.tok||'').slice(0,40),name=cleanName(String(d.name||''))||'Convidado';
+      if(S&&S.mode==='online'&&S.players[1].tok!==tok){try{c.send({t:'full'});}catch(e){}setTimeout(()=>{try{c.close();}catch(e){}},600);return;}
+      if(NET.conn&&NET.conn!==c)try{NET.conn.close();}catch(e){}
+      NET.conn=c;NET.up=true;NET.seen=Date.now();
+      if(S&&S.mode==='online'){netSync({resume:true});toast(`${S.players[1].name} voltou.`);render();}
+      else{startOnline(name,tok);toast(`${name} entrou na sala.`);}
+      return;}
+    if(c!==NET.conn)return;
+    NET.seen=Date.now();if(!NET.up){NET.up=true;render();}
+    if(!S||S.mode!=='online')return;
+    if(d.t==='act')hChain=hChain.then(async()=>{const r=act(1,d.a&&typeof d.a==='object'?{k:String(d.a.k),ids:d.a.ids,mk:d.a.mk}:null);
+      if(r.err!=null){netSend({t:'err',m:r.err});netSync();return;}
+      if(r.ev)await runEv(r.ev);else netSync();}).catch(()=>{});
+    else if(d.t==='next'){if(S.roundEnd&&!S.over)hChain=hChain.then(()=>startRound());}
+    else if(d.t==='again'){if(S.over)hChain=hChain.then(()=>startOnline(S.players[1].name,S.players[1].tok));}
+    else if(d.t==='bye')otherLeft(S.players[1].name);
+  });
+  c.on('close',()=>{if(NET.conn===c){NET.up=false;render();}});
+  c.on('error',()=>{});
+}
+function startOnline(gName,tok){
+  const ov=$('ov');delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;sel.clear();
+  S={gid:Math.random(),players:[],round:0,over:false,roundEnd:null,mode:'online',view:0,handoff:false,level:'mid'};
+  S.players.push({name:NET.name,bot:false,pts:0,out:false,hand:[]},{name:gName,bot:false,pts:0,out:false,hand:[],tok});
+  S.dealer=Math.random()*2|0;
+  startRound();
+}
+/* guest */
+async function netJoin(code,resume){
+  NET.role='guest';NET.code=code;NET.joined=!!resume;NET.up=false;saveNet();
+  try{await loadPeer();}catch(e){netFail('Não consegui carregar a parte online. Confira a internet e tente de novo.');return;}
+  if(NET.role!=='guest')return;
+  const p=new window.Peer({debug:0});NET.peer=p;
+  p.on('open',()=>{if(NET.peer===p)gConnect();});
+  p.on('disconnected',()=>{setTimeout(()=>{if(NET.peer===p&&!p.destroyed&&p.disconnected)try{p.reconnect();}catch(e){}},2000);});
+  p.on('error',e=>{if(NET.peer!==p)return;
+    if(e.type==='peer-unavailable'&&!NET.joined){joinFail('Sala não encontrada. Confira o código com quem criou a sala.');return;}
+    if(e.type==='browser-incompatible'){netFail('Este navegador não consegue jogar online.');return;}
+    NET.up=false;if(S)render();gRetry(3000);});
+}
+function gConnect(){
+  const p=NET.peer;if(NET.role!=='guest'||!p||p.destroyed)return;
+  if(p.disconnected){try{p.reconnect();}catch(e){}gRetry(4000);return;}
+  if(NET.conn)try{NET.conn.close();}catch(e){}
+  const c=p.connect(PFX+NET.code,{reliable:true,serialization:'json'});NET.conn=c;
+  c.on('open',()=>{if(NET.conn!==c)return;NET.up=true;NET.seen=Date.now();c.send({t:'hello',name:NET.name,tok:NET.tok});if(S)render();});
+  c.on('data',d=>{if(NET.conn!==c||!d||typeof d!=='object')return;NET.seen=Date.now();guestMsg(d);});
+  c.on('close',()=>{if(NET.conn!==c)return;NET.up=false;if(S)render();gRetry(2500);});
+  c.on('error',()=>{});
+  gRetry(9000);                                                          // try again if it never opens
+}
+function gRetry(ms){clearTimeout(gT);gT=setTimeout(()=>{if(NET.role==='guest'&&!NET.up)gConnect();},ms);}
+function guestMsg(d){
+  if(d.t==='s')gChain=gChain.then(()=>gApply(d.s,null,d.resume)).catch(()=>{});
+  else if(d.t==='ev')gChain=gChain.then(()=>gApply(d.s,d.ev)).catch(()=>{});
+  else if(d.t==='err'){busy=false;if(d.m)toast(String(d.m).slice(0,200));render();}
+  else if(d.t==='full')joinFail('Essa sala já tem dois jogadores.');
+  else if(d.t==='bye')otherLeft(S?S.players[0].name:'A outra pessoa');
+}
+async function gApply(raw,ev,resume){
+  const s=cleanIn(raw);if(!s||!Array.isArray(s.players)||s.players.length!==2)return;
+  const fresh=!S||S.gid!==s.gid||S.round!==s.round,order=!fresh?me().hand.map(c=>c.id):null,first=!NET.joined||!S;
+  NET.joined=true;
+  const ov=$('ov');if(ov.dataset.menu==='net'){delete ov.dataset.menu;ov.innerHTML='';}
+  if(first&&!resume)toast('Você entrou na sala. Boa partida!');
+  S=s;S.view=1;busy=false;
+  if(order){const pos=new Map(order.map((id,i)=>[id,i]));me().hand.sort((a,b)=>(pos.has(a.id)?pos.get(a.id):999)-(pos.has(b.id)?pos.get(b.id):999));}
+  else me().hand=sortBy(me().hand,sortMode);
+  if(fresh){sel.clear();hintK=-1;if(!resume&&!S.roundEnd){anim=true;render();await dealAnim();anim=false;}render();return;}
+  if(ev&&ev.k)await animEv(cleanIn(ev));
+  for(const id of[...sel])if(!me().hand.some(c=>c.id===id))sel.delete(id);
+  render();
+}
+/* both */
+setInterval(()=>{
+  if(!NET.role||!NET.up)return;netSend({t:'ping'});
+  if(Date.now()-NET.seen>12000){NET.up=false;if(S)render();if(NET.role==='guest')gConnect();}
+},4000);
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden||!NET.role)return;const p=NET.peer;
+  if(p&&!p.destroyed&&p.disconnected)try{p.reconnect();}catch(e){}
+  if(NET.role==='guest'&&(!NET.up||Date.now()-NET.seen>6000)){NET.up=false;gConnect();}
+});
+function otherLeft(name){
+  netLeave(false);const ov=$('ov');ov.dataset.menu='1';
+  ov.innerHTML=`<div class="ov"><div class="panel" style="text-align:center"><h2>Fim da sala</h2><p>${cleanName(name)} saiu da sala.</p><button class="big-btn" data-act="home">Ok</button></div></div>`;
+}
+function netFail(msg){netLeave(false);const ov=$('ov');ov.dataset.menu='1';
+  ov.innerHTML=`<div class="ov"><div class="panel" style="text-align:center"><h2>Online</h2><p>${msg}</p><button class="big-btn" data-act="home">Ok</button></div></div>`;}
+function joinFail(msg){const code=NET.code;netLeave(false);showOnline('join',code,msg);}
+/* screens */
+function showOnline(kind,code,err){
+  const ov=$('ov');ov.dataset.menu='1';
+  let last=[];try{last=JSON.parse(localStorage.getItem(NKEY))||[];}catch(e){}
+  const nm=last[0]?cleanName(String(last[0])):'';
+  ov.innerHTML=`<div class="ov"><div class="panel"><h2>${kind==='host'?'Criar sala':'Entrar numa sala'}</h2>
+    <p style="margin:0;opacity:.8">${kind==='host'?'Você recebe um código de 4 letras para passar para a outra pessoa.':'Peça o código para quem criou a sala.'}</p>
+    <form id="onF" autocomplete="off">
+    <label class="fld">Seu nome<input id="onName" maxlength="14" placeholder="Seu nome" value="${nm}" enterkeyhint="${kind==='join'?'next':'go'}"></label>
+    ${kind==='join'?`<label class="fld">Código da sala<input id="onCode" class="codein" maxlength="4" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="K7P2" value="${cleanCode(code)}" enterkeyhint="go"></label>`:''}
+    ${err?`<p class="bust" style="margin:10px 0 0">${err}</p>`:''}
+    <button class="big-btn" type="submit">${kind==='host'?'Criar sala':'Entrar'}</button></form>
+    <button class="big-btn sec" data-act="setup">Voltar</button></div></div>`;
+  const f=$('onF');
+  f.addEventListener('submit',e=>{e.preventDefault();
+    const name=cleanName($('onName').value);if(!name){toast('Digite o seu nome.');$('onName').focus();return;}
+    try{last[0]=name;localStorage.setItem(NKEY,JSON.stringify(last));}catch(e){}
+    if(kind==='join'){const c=cleanCode($('onCode').value);if(c.length!==4){toast('O código tem 4 letras ou números.');$('onCode').focus();return;}
+      leaveForNew();NET.name=name;NET.tok=Math.random().toString(36).slice(2,12);showConnecting(c);netJoin(c,false);}
+    else{leaveForNew();NET.name=name;showWaiting(newCode());netHost(NET.code,false);}
+  });
+  const ins=f.querySelectorAll('input');
+  ins.forEach((x,i)=>x.addEventListener('keydown',e=>{if(e.key==='Enter'&&i<ins.length-1){e.preventDefault();ins[i+1].focus();}}));
+  if(matchMedia('(pointer:fine)').matches)(nm&&ins[1]?ins[1]:ins[0]).focus();
+}
+function leaveForNew(){if(NET.role)netLeave(true);if(S&&S.mode==='online')S=null;}
+function showWaiting(code){
+  if(code)NET.code=code;const ov=$('ov');ov.dataset.menu='net';
+  ov.innerHTML=`<div class="ov"><div class="panel" style="text-align:center"><h2>Sala criada</h2>
+    <p style="margin:0">Passe este código para a outra pessoa:</p><div class="code">${NET.code}</div>
+    <p style="margin:0;font-size:14px;opacity:.8">No celular dela: <b>Menu → Novo jogo → Entrar</b> e digitar o código. Ou mande o convite com o link.</p>
+    <p id="onSt" style="opacity:.8">Abrindo a sala…</p>
+    <button class="big-btn" data-act="invite">Enviar convite</button><button class="big-btn sec" data-act="leave">Cancelar</button></div></div>`;
+  netStatus();
+}
+function showConnecting(code){
+  NET.code=code;const ov=$('ov');ov.dataset.menu='net';
+  ov.innerHTML=`<div class="ov"><div class="panel" style="text-align:center"><h2>Sala ${code}</h2><p id="onSt">Conectando…</p>
+    <button class="big-btn sec" data-act="leave">Cancelar</button></div></div>`;
+}
+async function invite(){
+  const url=location.origin+location.pathname+'?sala='+NET.code,text=`Vamos jogar Pontinho? Sala ${NET.code}`;
+  try{if(navigator.share){await navigator.share({title:'Pontinho',text,url});return;}}catch(e){if(e&&e.name==='AbortError')return;}
+  try{await navigator.clipboard.writeText(`${text}: ${url}`);toast('Convite copiado. Cole numa conversa com a outra pessoa.');}
+  catch(e){toast(`Mande o código ${NET.code} para a outra pessoa.`);}
 }
 
 /* ---------- events ---------- */
 document.addEventListener('click',e=>{
   const a=e.target.closest('[data-act]');
   if(a){const act=a.dataset.act,ov=$('ov');
-    if(act==='new'){delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(+a.dataset.n,false,null,lvlPick);}
+    if(act==='new'){leaveForNew();delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(+a.dataset.n,false,null,lvlPick);}
     else if(act==='lvl'){lvlPick=a.dataset.l;try{localStorage.setItem(LKEY,lvlPick);}catch(e){}
       ov.querySelectorAll('[data-act="lvl"]').forEach(b=>b.classList.toggle('on',b===a));$('lvlD').textContent=LVD[lvlPick];}
     else if(act==='pass')showNames();
     else if(act==='passgo'){const nm=[...ov.querySelectorAll('.fld input')].map((x,i)=>cleanName(x.value)||PNAMES[i]);
       try{localStorage.setItem(NKEY,JSON.stringify(nm));}catch(e){}
-      delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(1,true,nm);}
+      leaveForNew();delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(1,true,nm);}
+    else if(act==='onhost')showOnline('host');
+    else if(act==='onjoin')showOnline('join');
+    else if(act==='invite')invite();
+    else if(act==='leave'){netLeave(true);showMenu(true);}
+    else if(act==='home')showMenu(true);
+    else if(act==='again'){if(NET.role==='guest'){netSend({t:'again'});toast('Pedi para começar de novo.');}else if(NET.role==='host')startOnline(S.players[1].name,S.players[1].tok);}
     else if(act==='redeal'){ov.innerHTML=`<div class="ov"><div class="panel"><h2>Nova partida?</h2><p>As cartas desta partida serão recolhidas e distribuídas de novo. Os pontos de cada um continuam como estão.</p><div class="row3"><button class="big-btn sec" data-act="back2">Cancelar</button><button class="big-btn" data-act="redealok">Começar</button></div></div></div>`;}
     else if(act==='redealok'){delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;S.gid=Math.random();S.roundEnd=null;startRound();}
     else if(act==='setup'){if(S&&LV[S.level])lvlPick=S.level;showSetup();}
@@ -693,7 +931,7 @@ document.addEventListener('click',e=>{
     else if(act==='rules')showRules();
     else if(act==='close'){delete ov.dataset.menu;ov.innerHTML='';render();}
     else if(act==='back')showMenu(menuFirst);
-    else if(act==='next'){startRound();}
+    else if(act==='next'){if(NET.role==='guest'){netSend({t:'next'});a.disabled=true;a.textContent='Aguardando…';}else startRound();}
     else if(act==='newmenu'){S.roundEnd=null;menuFirst=true;showSetup();}
     else if(act==='reveal'){S.handoff=false;S.view=S.turn;sel.clear();save();render();}
     return;}
@@ -806,8 +1044,19 @@ try{const cv=document.createElement('canvas');cv.width=cv.height=180;const g=cv.
   g.fillStyle='#f5c542';g.beginPath();g.arc(140,148,14,0,7);g.fill();
   $('icon').href=cv.toDataURL('image/png');}catch(e){}
 
-if(load()){busy=false;render();if(S.over&&!S.roundEnd)showMenu(true);else maybeBot();}
-else showMenu(true);
+let netSaved=null;try{netSaved=JSON.parse(localStorage.getItem(NETKEY));}catch(e){}
+const joinCode=cleanCode(new URLSearchParams(location.search).get('sala'));
+if(joinCode)history.replaceState(null,'',location.pathname);
+if(netSaved&&netSaved.role==='guest'&&netSaved.code&&!joinCode){
+  Object.assign(NET,{name:cleanName(String(netSaved.name||'')),tok:String(netSaved.tok||'')});showConnecting(netSaved.code);netJoin(netSaved.code,true);}
+else if(netSaved&&netSaved.role==='host'&&netSaved.code&&!joinCode&&load()&&S.mode==='online'){
+  NET.name=cleanName(String(netSaved.name||''));busy=false;render();netHost(netSaved.code,true);}
+else{
+  try{localStorage.removeItem(NETKEY);}catch(e){}
+  if(load()&&S.mode!=='online'){busy=false;render();if(S.over&&!S.roundEnd)showMenu(true);else maybeBot();}
+  else{S=null;showMenu(true);}
+  if(joinCode)showOnline('join',joinCode);
+}
 }
 </script>
 </body>
