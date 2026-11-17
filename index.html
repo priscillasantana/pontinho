@@ -23,6 +23,14 @@ html,body{margin:0;height:100%;background:radial-gradient(ellipse at 50% 20%,#15
 header{display:flex;align-items:center;justify-content:space-between;padding:6px 0}
 h1{font-size:22px;margin:0;font-weight:800;letter-spacing:.3px}
 h1 span{color:var(--gold)}
+h1 small{font-size:12px;font-weight:700;letter-spacing:0;vertical-align:middle;margin-left:8px;padding:3px 8px;border-radius:8px;background:rgba(255,255,255,.12);color:#cfd6d1}
+h1 small:empty{display:none}
+.lvl{display:flex;background:rgba(255,255,255,.1);border-radius:13px;padding:3px;gap:3px;margin-top:6px}
+.lvl button{flex:1;min-height:42px;border:0;border-radius:10px;background:transparent;color:#cfd6d1;font-weight:700;font-size:13px;letter-spacing:-.2px;white-space:nowrap;padding:0 2px}
+.lvl button.on{background:#e6ebe7;color:#141a17}
+.lvl-d{font-size:13px!important;opacity:.8;margin:6px 0 0;min-height:3em}
+#bar button.hint{flex:0 0 auto;padding:0 12px;background:#4fc3f7;color:#062a3a}
+.meld.hinted{border-color:#4fc3f7;border-left-color:#4fc3f7;box-shadow:0 0 0 2px #4fc3f7}
 button{font:inherit;cursor:pointer}
 .ib{background:rgba(255,255,255,.13);border:0;color:#fff;border-radius:12px;padding:9px 14px;min-height:40px}
 #opps{display:flex;gap:8px;justify-content:space-around;padding-top:4px}
@@ -149,7 +157,7 @@ button{font:inherit;cursor:pointer}
 </head>
 <body>
 <div id="app">
-  <header><h1>Ponti<span>nho</span></h1><div style="display:flex;gap:6px"><button class="ib" id="fsBtn" aria-label="Tela cheia">⛶</button><button class="ib" id="menuBtn">Menu</button></div></header>
+  <header><h1>Ponti<span>nho</span><small id="lvlTag"></small></h1><div style="display:flex;gap:6px"><button class="ib" id="fsBtn" aria-label="Tela cheia">⛶</button><button class="ib" id="menuBtn">Menu</button></div></header>
   <div id="opps"></div>
   <div id="mid">
     <div class="pile" id="stockP"></div>
@@ -160,6 +168,7 @@ button{font:inherit;cursor:pointer}
   <div id="me"></div>
   <div id="bar">
     <button id="cancelBtn" class="sec" hidden>Desfazer</button>
+    <button id="hintBtn" class="hint" hidden>Dica</button>
     <div class="seg" id="seg"><button data-sort="suit">Naipe</button><button data-sort="rank">Valor</button></div>
     <button id="sortBtn" class="tiny">Ordenar</button>
   </div>
@@ -289,15 +298,15 @@ function tryAdd(m,c){
 /* ---------- game flow ---------- */
 const alive=()=>S.players.map((p,i)=>i).filter(i=>!S.players[i].out);
 function nextAlive(i){const n=S.players.length;for(let k=1;k<=n;k++){const j=(i+k)%n;if(!S.players[j].out)return j;}return i;}
-function newGame(n,pass,names){
+function newGame(n,pass,names,level){
   setTimeout(()=>toast('Toque nas cartas e depois na mesa ou no lixo — ou arraste.'),900);
-  S={gid:Math.random(),players:[],round:0,over:false,roundEnd:null,mode:pass?'pass':'bots',view:0,handoff:false};
+  S={gid:Math.random(),players:[],round:0,over:false,roundEnd:null,mode:pass?'pass':'bots',view:0,handoff:false,level:pass?'mid':(level||'mid')};
   for(let i=0;i<=n;i++)S.players.push({name:pass?((names&&names[i])||PNAMES[i]):NAMES[i],bot:!pass&&i>0,pts:0,out:false,hand:[]});
   S.dealer=Math.random()*(n+1)|0;
   startRound();
 }
 function startRound(){
-  S.round++;S.stock=newDeck();S.discard=[];S.melds=[];S.mustUse=null;S.phase='draw';S.roundEnd=null;
+  S.round++;S.stock=newDeck();S.discard=[];S.melds=[];S.pickups=[];hintK=-1;S.mustUse=null;S.phase='draw';S.roundEnd=null;
   S.players.forEach(p=>p.hand=[]);
   S.dealer=nextAlive(S.dealer);
   const order=alive();
@@ -316,7 +325,7 @@ function drawStock(i){
   if(!S.stock.length){endRound(-1);return false;}
   S.players[i].hand.push(S.stock.pop());return true;
 }
-function nextTurn(){S.turn=nextAlive(S.turn);S.phase='draw';S.mustUse=null;undoSnap=null;
+function nextTurn(){hintK=-1;S.turn=nextAlive(S.turn);S.phase='draw';S.mustUse=null;undoSnap=null;
   if(S.mode==='pass')S.handoff=true;
   save();render();maybeBot();}
 function endRound(w){
@@ -338,10 +347,10 @@ async function humanDraw(){if(!myTurn()||S.phase!=='draw')return;const fr=rectOf
   if(!drawStock(S.view))return;S.phase='play';const c=me().hand[me().hand.length-1];
   anim=true;save();render();await flyTo(fr,cardHTML(c),handSel(c.id));anim=false;render();}
 async function humanTake(){if(!myTurn()||S.phase!=='draw'||!S.discard.length)return;const fr=rectOf(discEl());
-  undoSnap=JSON.stringify(S);const c=S.discard.pop();me().hand.push(c);S.mustUse=c.id;S.phase='play';
+  undoSnap=JSON.stringify(S);const c=S.discard.pop();me().hand.push(c);(S.pickups=S.pickups||[]).push({p:S.view,c});S.mustUse=c.id;S.phase='play';
   sel=new Set([c.id]);anim=true;save();render();await flyTo(fr,cardHTML(c),handSel(c.id));anim=false;render();}
 function cancelTake(){if(!undoSnap)return;S=JSON.parse(undoSnap);undoSnap=null;sel.clear();save();render();}
-function afterPlay(){
+function afterPlay(){hintK=-1;
   if(S.mustUse!=null&&!me().hand.some(c=>c.id===S.mustUse)){S.mustUse=null;undoSnap=null;}
   if(!me().hand.length){S.log=`${you()} bateu!`;endRound(S.view);return;}
   save();render();
@@ -438,32 +447,117 @@ function botDiscard(hand){
     const sc=u*30-pts(c);if(sc<bs){bs=sc;best=c;}}
   return best;
 }
-function maybeBot(){if(!S||S.roundEnd||S.over||busy||anim)return;if(S.players[S.turn].bot){busy=true;setTimeout(botTurn,500);}}
-async function botTurn(){
-  const i=S.turn,p=S.players[i],gid=S.gid;let mustId=null;const gone=()=>S.gid!==gid;
+/* ---------- levels ---------- */
+const LV={easy:'Iniciante',mid:'Intermediário',hard:'Avançado'};
+const LVD={easy:'Tem botão de dica, e o computador erra de vez em quando.',
+  mid:'O computador joga bem, sem estratégia avançada.',
+  hard:'O computador não erra: lembra das cartas que já saíram, evita te dar cartas úteis e pode segurar os jogos para baixar tudo de uma vez.'};
+const LKEY='pontinho-level';
+let lvlPick='mid';try{const v=localStorage.getItem(LKEY);if(LV[v])lvlPick=v;}catch(e){}
+const lvl=()=>(S&&S.level)||'mid';
+let hintK=-1;
+/* beginner bots slip now and then: skip a useful discard, lay only part of their melds, forget to add to the table, throw a random card */
+function slips(level){return level==='easy'?{take:Math.random()<.35,lay:Math.random()<.3,add:Math.random()<.3,disc:Math.random()<.25}:{};}
+function botTakes(i,top,sl){return!!top&&!sl.take&&botWants(S.players[i].hand,top);}
+function botPlan(i,mustId,sl){
+  const p=S.players[i],mc=mustId!=null?p.hand.find(c=>c.id===mustId):null;
+  const free=mc&&S.melds.some(m=>tryAdd(m,mc));
+  let plan=bestMelds(p.hand,mc?mustId:null,free)||[];
+  if(!mc){if(sl.lay)plan=plan.slice(0,1);else if(lvl()==='hard'&&plan.length&&shouldHold(i,plan))plan=[];}
+  return plan;
+}
+const oppsOf=i=>S.players.map((q,j)=>j).filter(j=>j!==i&&!S.players[j].out);
+/* advanced: keep melds hidden in hand and lay everything at once, unless it is getting risky */
+function shouldHold(i,plan){
+  const p=S.players[i],ids=new Set(plan.flatMap(m=>m.cards.map(e=>e.c.id)));
+  const rest=p.hand.filter(c=>!ids.has(c.id));
+  const loose=rest.filter(c=>!(c.r!==0&&S.melds.some(m=>tryAdd(m,c)))).length;
+  if(loose<=1)return false;                                     // can go out right now
+  const minOpp=Math.min(...oppsOf(i).map(j=>S.players[j].hand.length));
+  if(minOpp<=5)return false;                                    // someone is close to going out
+  if(S.stock.length<20)return false;
+  if(p.pts+p.hand.reduce((t,c)=>t+pts(c),0)>100)return false;    // would bust if caught holding
+  return true;
+}
+function botChooseDiscard(i,sl){
+  const h=S.players[i].hand;
+  if(sl.disc){const nj=h.filter(c=>c.r!==0);if(nj.length)return nj[Math.random()*nj.length|0];}
+  return lvl()==='hard'?smartDiscard(i,h):botDiscard(h);
+}
+/* advanced discard: looks one draw ahead. For every card it could throw, it checks every card still live
+   (2 decks minus everything visible: its hand, the table, the discard pile) and keeps the hand that melds best
+   on average. It also avoids feeding the next player: cards that fit the table or what they took from the discard. */
+function handValue(h){const plan=bestMelds(h,null,true)||[],ids=new Set(plan.flatMap(m=>m.cards.map(e=>e.c.id)));
+  return ids.size*10-h.filter(c=>!ids.has(c.id)).reduce((t,c)=>t+pts(c),0)*.3;}
+function smartDiscard(i,hand){
+  const seen={},see=c=>{const k=c.r?c.r*4+c.s:0;seen[k]=(seen[k]||0)+1;};
+  hand.forEach(see);S.discard.forEach(see);S.melds.forEach(m=>m.cards.forEach(e=>see(e.c)));
+  const pool=[];let tot=0;
+  for(let r=0;r<=13;r++)for(let s=0;s<4;s++){if(r===0&&s>0)continue;const n=2-(seen[r?r*4+s:0]||0);if(n>0){pool.push({c:{id:-1-pool.length,r,s:r?s:-1},n});tot+=n;}}
+  const onTable=new Set([...S.discard.map(c=>c.id),...S.melds.flatMap(m=>m.cards.map(e=>e.c.id))]);
+  const nx=nextAlive(i),known=(S.pickups||[]).filter(k=>k.p===nx&&!onTable.has(k.c.id)).map(k=>k.c);
+  const minOpp=Math.min(...oppsOf(i).map(j=>S.players[j].hand.length));
+  const nj=hand.filter(c=>c.r!==0),cand=nj.length?nj:hand,done=new Set();
+  let best=null,bs=-1e9;
+  for(const c of cand){const key=c.r*4+c.s;if(done.has(key))continue;done.add(key);
+    const rest=hand.filter(x=>x!==c);let ev=0;
+    if(tot)for(const t of pool)ev+=t.n*handValue([...rest,t.c]);ev=tot?ev/tot:handValue(rest);
+    let pen=0;
+    if(c.r!==0&&S.melds.some(m=>tryAdd(m,c)))pen+=4;
+    for(const k of known){if(k.r===0||c.r===0)continue;
+      if(k.r===c.r&&k.s!==c.s)pen+=3;else if(k.s===c.s&&vals(c).some(a=>vals(k).some(b=>Math.abs(a-b)<=2)))pen+=3;}
+    const sc=ev-pen+(minOpp<=3?pts(c)*.4:0);
+    if(sc>bs){bs=sc;best=c;}
+  }
+  return best;
+}
+/* beginner hint for the human */
+function hint(){
+  if(!myTurn())return;
+  const h=me().hand,L=cs=>cs.map(label).join(', ');
   if(S.phase==='draw'){
     const top=S.discard[S.discard.length-1];
-    if(top&&botWants(p.hand,top)){const fr=rectOf(discEl());p.hand.push(S.discard.pop());mustId=top.id;S.phase='play';render();
+    if(top&&(genCands([...h,top]).some(m=>m.cards.some(e=>e.c.id===top.id))||S.melds.some(m=>tryAdd(m,top))))
+      toast(`Pegue o ${label(top)} do lixo — ele entra num jogo. Toque no lixo.`);
+    else toast('O lixo não ajuda agora. Compre do monte: toque no monte.');
+    return;
+  }
+  const mc=S.mustUse!=null?h.find(c=>c.id===S.mustUse):null;
+  const fitK=c=>S.melds.findIndex(m=>tryAdd(m,c));
+  if(mc&&fitK(mc)>=0){sel=new Set([mc.id]);hintK=fitK(mc);render();toast(`O ${label(mc)} encaixa no jogo destacado na mesa. Toque nele.`);return;}
+  const plan=bestMelds(h,mc?mc.id:null,false)||[];
+  if(plan.length){const m=(mc&&plan.find(x=>x.cards.some(e=>e.c.id===mc.id)))||plan[0],cs=m.cards.map(e=>e.c);
+    sel=new Set(cs.map(c=>c.id));hintK=-1;render();
+    toast(`Você pode baixar ${m.type==='set'?'uma trinca':'uma sequência'}: ${L(cs)}. Já selecionei — toque na mesa.`);return;}
+  for(const c of h){const k=fitK(c);if(k>=0){sel=new Set([c.id]);hintK=k;render();toast(`O ${label(c)} encaixa no jogo destacado na mesa. Toque nele.`);return;}}
+  const d=smartDiscard(S.view,h);sel=new Set([d.id]);hintK=-1;render();
+  toast(`Nenhum jogo por agora. Sugestão: descarte o ${label(d)} — toque no lixo.`);
+}
+function maybeBot(){if(!S||S.roundEnd||S.over||busy||anim)return;if(S.players[S.turn].bot){busy=true;setTimeout(botTurn,500);}}
+async function botTurn(){
+  const i=S.turn,p=S.players[i],gid=S.gid;let mustId=null;const gone=()=>S.gid!==gid;const sl=slips(lvl());
+  if(S.phase==='draw'){
+    const top=S.discard[S.discard.length-1];
+    if(botTakes(i,top,sl)){const fr=rectOf(discEl());p.hand.push(S.discard.pop());(S.pickups=S.pickups||[]).push({p:i,c:top});mustId=top.id;S.phase='play';render();
       await fly(fr,seatRect(i),cardHTML(top));if(gone())return;}
     else{const fr=rectOf(stockEl());if(!drawStock(i))return;S.phase='play';render();
       await fly(fr,seatRect(i),BACK);if(gone())return;}
     save();await sleep(350);if(gone())return;
   }
   for(let it=0;it<3;it++){
-    const mc=mustId!=null?p.hand.find(c=>c.id===mustId):null;
-    const free=mc&&S.melds.some(m=>tryAdd(m,mc));
-    const plan=bestMelds(p.hand,mc?mustId:null,free)||[];
+    const plan=botPlan(i,mustId,sl);
     const moves=[];
     for(const m of plan){m.owner=i;S.melds.push(m);const k=S.melds.length-1;const ids=new Set(m.cards.map(e=>e.c.id));
       p.hand=p.hand.filter(c=>!ids.has(c.id));m.cards.forEach(e=>moves.push({k,c:e.c}));}
-    moves.push(...botAddTable(p));
+    if(!sl.add)moves.push(...botAddTable(p));
     if(!moves.length)break;
     const fr=seatRect(i);render();
     await Promise.all(moves.map((mv,j)=>flyTo(fr,cardHTML(mv.c),meldSel(mv.k,mv.c.id),{delay:j*140})));if(gone())return;
     await sleep(250);if(gone())return;
+    if(sl.lay)break;
   }
   if(!p.hand.length){S.log=`${p.name} bateu!`;endRound(i);return;}
-  const d=botDiscard(p.hand);p.hand=p.hand.filter(c=>c!==d);S.discard.push(d);
+  const d=botChooseDiscard(i,sl);p.hand=p.hand.filter(c=>c!==d);S.discard.push(d);
   const fr=seatRect(i);render();await flyTo(fr,cardHTML(d),'#discP .top');if(gone())return;
   busy=false;
   if(!p.hand.length){S.log=`${p.name} bateu!`;endRound(i);return;}
@@ -491,13 +585,15 @@ function render(){
   const top=S.discard[S.discard.length-1],und=S.discard[S.discard.length-2];
   $('discP').innerHTML=`<div class="stack">${und?cardHTML(und,'under'):'<div class="card none"></div>'}${top?cardHTML(top,'top'):''}</div><span>Lixo</span>`;
   const canPlay=myTurn()&&S.phase==='play';
-  $('table').innerHTML=S.melds.length?S.melds.map((m,k)=>`<div class="meld" data-k="${k}" style="border-left-color:${COLORS[m.owner]}">${
+  $('table').innerHTML=S.melds.length?S.melds.map((m,k)=>`<div class="meld${k===hintK?' hinted':''}" data-k="${k}" style="border-left-color:${COLORS[m.owner]}">${
     m.cards.map(e=>cardHTML(e.c,'',e.c.r===0?RANKS[e.v]:'')).join('')}</div>`).join(''):'<div class="empty-t">Os jogos baixados aparecem aqui</div>';
   if(!(drag&&drag.on))$('hand').innerHTML=hide?'':me().hand.map(c=>cardHTML(c,(sel.has(c.id)?'sel ':'')+(S.mustUse===c.id?'must':''))).join('');
   fitHand();
   const hp=me().hand.reduce((t,c)=>t+pts(c),0);
   $('me').innerHTML=`<span><span class="nm ${S.turn===S.view&&!S.roundEnd?'turn':''}">${S.mode==='pass'?me().name:'Você'}</span> · ${me().pts} pts${me().out?' (fora)':''}</span><span>${hide?'':'Valor na mão: '+hp}</span>`;
   $('cancelBtn').hidden=!(undoSnap&&myTurn());
+  const easy=S.mode==='bots'&&lvl()==='easy';$('hintBtn').hidden=!easy;$('hintBtn').disabled=!myTurn();
+  $('lvlTag').textContent=S.mode==='bots'?LV[lvl()]:'';
   document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',b.dataset.sort===sortMode));
   renderOv();
 }
@@ -526,7 +622,10 @@ function showMenu(first){
   const ov=$('ov');ov.dataset.menu='1';
   ov.innerHTML=`<div class="ov"><div class="panel"><h2>Pontinho</h2>
     ${first?'':'<button class="big-btn" data-act="redeal">Nova partida</button><p style="margin:4px 0 0;font-size:13px;opacity:.75">Dá as cartas de novo e mantém os pontos de cada um.</p><button class="big-btn sec" data-act="restart">Novo jogo</button><p style="margin:4px 0 0;font-size:13px;opacity:.75">Zera os pontos de todos e começa do zero.</p><p style="margin:16px 0 0;opacity:.8">Ou comece um novo jogo com outras opções:</p>'}
-    <p><b>Contra o computador</b> — quantos jogadores no total?</p>
+    <p style="margin-bottom:0"><b>Contra o computador</b> — nível:</p>
+    <div class="lvl">${Object.keys(LV).map(k=>`<button data-act="lvl" data-l="${k}" class="${k===lvlPick?'on':''}">${LV[k]}</button>`).join('')}</div>
+    <p class="lvl-d" id="lvlD">${LVD[lvlPick]}</p>
+    <p>Quantos jogadores no total?</p>
     <div class="row3"><button class="big-btn" data-act="new" data-n="1">2</button><button class="big-btn" data-act="new" data-n="2">3</button><button class="big-btn" data-act="new" data-n="3">4</button></div>
     <p style="margin-top:16px"><b>Duas pessoas</b> no mesmo celular, passando a vez:</p>
     <button class="big-btn" data-act="pass">2 jogadores</button>
@@ -553,6 +652,7 @@ function showRules(){
   <li>Dois baralhos e 2 coringas. Cada jogador recebe 9 cartas.</li>
   <li>Na sua vez, <b>compre</b> do monte ou <b>pegue a carta do lixo</b> — mas só se for usá-la num jogo nessa mesma vez.</li>
   <li><b>Jogos:</b> <i>trinca</i> são 3–4 cartas do mesmo valor e naipes diferentes. <i>Sequência</i> são 3+ cartas seguidas do mesmo naipe (o Ás vale antes do 2 ou depois do K, sem dar a volta).</li>
+  <li><b>Níveis</b> (contra o computador): no <i>Iniciante</i> você tem o botão <b>Dica</b> e o computador erra às vezes; no <i>Avançado</i> ele lembra das cartas que já saíram e pode guardar os jogos para baixar tudo de uma vez.</li>
   <li>O coringa só entra em sequências (um por sequência). Se você tiver a carta que ele substitui, encaixe-a nesse jogo e o coringa vem para a sua mão.</li>
   <li>Arraste as cartas dentro da mão para reorganizar, ou escolha <b>Naipe</b> ou <b>Valor</b> e toque em <b>Ordenar</b>.</li>
   <li>Toque nas cartas para selecionar e depois toque no destino — ou arraste. Na <b>mesa</b> para baixar um jogo novo, num <b>jogo da mesa</b> para encaixar, no <b>lixo</b> para descartar (isso termina a sua vez).</li>
@@ -565,7 +665,9 @@ function showRules(){
 document.addEventListener('click',e=>{
   const a=e.target.closest('[data-act]');
   if(a){const act=a.dataset.act,ov=$('ov');
-    if(act==='new'){delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(+a.dataset.n,false);}
+    if(act==='new'){delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(+a.dataset.n,false,null,lvlPick);}
+    else if(act==='lvl'){lvlPick=a.dataset.l;try{localStorage.setItem(LKEY,lvlPick);}catch(e){}
+      ov.querySelectorAll('[data-act="lvl"]').forEach(b=>b.classList.toggle('on',b===a));$('lvlD').textContent=LVD[lvlPick];}
     else if(act==='pass')showNames();
     else if(act==='passgo'){const nm=[...ov.querySelectorAll('.fld input')].map((x,i)=>cleanName(x.value)||PNAMES[i]);
       try{localStorage.setItem(NKEY,JSON.stringify(nm));}catch(e){}
@@ -574,7 +676,7 @@ document.addEventListener('click',e=>{
     else if(act==='redealok'){delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;S.gid=Math.random();S.roundEnd=null;startRound();}
     else if(act==='restart'){ov.innerHTML=`<div class="ov"><div class="panel"><h2>Novo jogo?</h2><p>Os pontos de todos voltam a zero.</p><div class="row3"><button class="big-btn sec" data-act="back2">Cancelar</button><button class="big-btn" data-act="restartok">Começar</button></div></div></div>`;}
     else if(act==='back2')showMenu(false);
-    else if(act==='restartok'){const n=S.players.length-1,pass=S.mode==='pass';delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(n,pass,pass?S.players.map(p=>p.name):null);}
+    else if(act==='restartok'){const n=S.players.length-1,pass=S.mode==='pass';delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(n,pass,pass?S.players.map(p=>p.name):null,S.level);}
     else if(act==='rules')showRules();
     else if(act==='close'){delete ov.dataset.menu;ov.innerHTML='';render();}
     else if(act==='back')showMenu(!S);
@@ -585,7 +687,7 @@ document.addEventListener('click',e=>{
   if(!S||$('ov').innerHTML)return;
   const hc=e.target.closest('#hand .card');
   if(hc&&justDragged)return;
-  if(hc){const id=+hc.dataset.id;sel.has(id)?sel.delete(id):sel.add(id);render();return;}
+  if(hc){const id=+hc.dataset.id;sel.has(id)?sel.delete(id):sel.add(id);hintK=-1;render();return;}
   const md=e.target.closest('.meld'),onTable=e.target.closest('#table');
   if((md||onTable)&&sel.size&&!(myTurn()&&S.phase==='play')){
     if(anim||busy)return;
@@ -597,6 +699,7 @@ document.addEventListener('click',e=>{
   else if(playing&&e.target.closest('#table')){if(sel.size>=3)layDown();else toast('Um jogo precisa de pelo menos 3 cartas.');}
 });
 $('cancelBtn').onclick=cancelTake;
+$('hintBtn').onclick=e=>{e.stopPropagation();hint();};
 $('sortBtn').onclick=()=>{if(!S||S.handoff||(drag&&drag.on))return;me().hand=sortBy(me().hand,sortMode);save();render();};
 $('seg').onclick=e=>{const b=e.target.closest('[data-sort]');if(!b)return;sortMode=b.dataset.sort;save();render();};
 $('menuBtn').onclick=()=>showMenu(false);
