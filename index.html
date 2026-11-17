@@ -91,6 +91,9 @@ button{font:inherit;cursor:pointer}
 .big-btn{display:block;width:100%;min-height:50px;border:0;border-radius:14px;background:var(--gold);color:#2a1f00;font-weight:800;font-size:17px;margin-top:10px}
 .big-btn.sec{background:rgba(255,255,255,.14);color:#fff}
 .row3{display:flex;gap:8px}.row3 .big-btn{flex:1}
+.fld{display:block;margin-top:12px;font-size:14px;color:#c9d1cc}
+.fld input{display:block;width:100%;margin-top:5px;min-height:48px;padding:0 14px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:#fff;font:inherit;font-size:17px;-webkit-user-select:text;user-select:text}
+.fld input:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:transparent}
 .res{display:flex;flex-direction:column;gap:10px;margin:10px 0}
 .res .r{background:rgba(0,0,0,.2);border-radius:12px;padding:8px 10px}
 .res .top{display:flex;justify-content:space-between;font-weight:700}
@@ -286,10 +289,10 @@ function tryAdd(m,c){
 /* ---------- game flow ---------- */
 const alive=()=>S.players.map((p,i)=>i).filter(i=>!S.players[i].out);
 function nextAlive(i){const n=S.players.length;for(let k=1;k<=n;k++){const j=(i+k)%n;if(!S.players[j].out)return j;}return i;}
-function newGame(n,pass){
+function newGame(n,pass,names){
   setTimeout(()=>toast('Toque nas cartas e depois na mesa ou no lixo — ou arraste.'),900);
   S={gid:Math.random(),players:[],round:0,over:false,roundEnd:null,mode:pass?'pass':'bots',view:0,handoff:false};
-  for(let i=0;i<=n;i++)S.players.push({name:pass?PNAMES[i]:NAMES[i],bot:!pass&&i>0,pts:0,out:false,hand:[]});
+  for(let i=0;i<=n;i++)S.players.push({name:pass?((names&&names[i])||PNAMES[i]):NAMES[i],bot:!pass&&i>0,pts:0,out:false,hand:[]});
   S.dealer=Math.random()*(n+1)|0;
   startRound();
 }
@@ -529,6 +532,21 @@ function showMenu(first){
     <button class="big-btn" data-act="pass">2 jogadores</button>
     <button class="big-btn sec" data-act="rules">Como jogar</button>${first?'':'<button class="big-btn sec" data-act="close">Voltar ao jogo</button>'}</div></div>`;
 }
+const NKEY='pontinho-names';
+const cleanName=v=>v.replace(/[<>&"'`]/g,'').replace(/\s+/g,' ').trim().slice(0,14);
+function showNames(){
+  const ov=$('ov');ov.dataset.menu='1';
+  let last=[];try{last=JSON.parse(localStorage.getItem(NKEY))||[];}catch(e){}
+  ov.innerHTML=`<div class="ov"><div class="panel"><h2>Quem vai jogar?</h2>
+    <form id="namesF" autocomplete="off">
+    ${PNAMES.map((d,i)=>`<label class="fld">Nome de quem joga ${i+1}<input maxlength="14" placeholder="${d}" value="${last[i]?cleanName(String(last[i])):''}" enterkeyhint="${i<PNAMES.length-1?'next':'go'}"></label>`).join('')}
+    <button class="big-btn" type="submit" data-act="passgo">Começar</button></form>
+    <button class="big-btn sec" data-act="back">Voltar</button></div></div>`;
+  const f=$('namesF');f.addEventListener('submit',e=>e.preventDefault());
+  const ins=f.querySelectorAll('input');
+  ins.forEach((x,i)=>x.addEventListener('keydown',e=>{if(e.key==='Enter'&&i<ins.length-1){e.preventDefault();ins[i+1].focus();}}));
+  if(matchMedia('(pointer:fine)').matches)ins[0].focus();
+}
 function showRules(){
   const ov=$('ov');ov.dataset.menu='1';
   ov.innerHTML=`<div class="ov"><div class="panel"><h2>Como jogar</h2><ul>
@@ -548,12 +566,15 @@ document.addEventListener('click',e=>{
   const a=e.target.closest('[data-act]');
   if(a){const act=a.dataset.act,ov=$('ov');
     if(act==='new'){delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(+a.dataset.n,false);}
-    else if(act==='pass'){delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(1,true);}
+    else if(act==='pass')showNames();
+    else if(act==='passgo'){const nm=[...ov.querySelectorAll('.fld input')].map((x,i)=>cleanName(x.value)||PNAMES[i]);
+      try{localStorage.setItem(NKEY,JSON.stringify(nm));}catch(e){}
+      delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(1,true,nm);}
     else if(act==='redeal'){ov.innerHTML=`<div class="ov"><div class="panel"><h2>Nova partida?</h2><p>As cartas desta partida serão recolhidas e distribuídas de novo. Os pontos de cada um continuam como estão.</p><div class="row3"><button class="big-btn sec" data-act="back2">Cancelar</button><button class="big-btn" data-act="redealok">Começar</button></div></div></div>`;}
     else if(act==='redealok'){delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;S.gid=Math.random();S.roundEnd=null;startRound();}
     else if(act==='restart'){ov.innerHTML=`<div class="ov"><div class="panel"><h2>Novo jogo?</h2><p>Os pontos de todos voltam a zero.</p><div class="row3"><button class="big-btn sec" data-act="back2">Cancelar</button><button class="big-btn" data-act="restartok">Começar</button></div></div></div>`;}
     else if(act==='back2')showMenu(false);
-    else if(act==='restartok'){const n=S.players.length-1,pass=S.mode==='pass';delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(n,pass);}
+    else if(act==='restartok'){const n=S.players.length-1,pass=S.mode==='pass';delete ov.dataset.menu;ov.innerHTML='';busy=false;anim=false;newGame(n,pass,pass?S.players.map(p=>p.name):null);}
     else if(act==='rules')showRules();
     else if(act==='close'){delete ov.dataset.menu;ov.innerHTML='';render();}
     else if(act==='back')showMenu(!S);
