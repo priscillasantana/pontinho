@@ -3,6 +3,13 @@
 Cada atualização ganha um número de versão (`maior.menor.correção`), uma entrada aqui e uma tag no GitHub.
 No jogo, a versão aparece no canto inferior direito.
 
+## v1.7.0 — 19/11/2026
+- No nível Iniciante, o botão Desfazer volta qualquer jogo baixado ou carta encaixada na sua vez, um passo de cada vez, até você descartar. Comprar do monte não dá para desfazer.
+- Regras do coringa mais fiéis ao Pontinho tradicional:
+  - O coringa só entra no meio de uma sequência, no lugar de uma carta que falta (ex.: 6, coringa, 8). Não vale mais na ponta.
+  - Quem troca o coringa da mesa pela carta verdadeira precisa baixá-lo na mesma vez, no meio de outra sequência nova. Só dá para trocar se houver onde usá-lo.
+  - O computador segue as mesmas regras.
+
 ## v1.6.0 — 17/11/2026
 - Jogo online: duas pessoas, cada uma no seu celular. Em Novo jogo, uma cria a sala e passa o código de 4 letras (ou o link de convite); a outra entra com o código.
 - O celular de quem criou a sala comanda o jogo e manda para o outro só as cartas que ele pode ver.

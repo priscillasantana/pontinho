@@ -183,7 +183,7 @@ button{font:inherit;cursor:pointer}
 <script>
 {
 /* ---------- version: bump with every update, add an entry to CHANGELOG.md and tag the commit ---------- */
-const VERSION='1.6.0';
+const VERSION='1.7.0';
 const RANKS=['★','A','2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const SUITS=['♠','♥','♣','♦'];
 const NAMES=['Você','Ana','Beto','Caio'];const PNAMES=['Jogador 1','Jogador 2'];
@@ -191,7 +191,7 @@ const COLORS=['#f5c542','#4fc3f7','#ef9a9a','#b39ddb'];
 const KEY='pontinho-v3';
 let anim=false,dropRects=null;
 const srcRect=id=>(dropRects&&dropRects[id])||rectOf(q(handSel(id)));
-let S=null, sel=new Set(), sortMode='suit', busy=false, undoSnap=null, drag=null, ghost=null, justDragged=false;
+let S=null, sel=new Set(), sortMode='suit', busy=false, undos=[], drag=null, ghost=null, justDragged=false;
 const $=id=>document.getElementById(id);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
@@ -202,8 +202,8 @@ const label=c=>c.r===0?'Coringa':RANKS[c.r]+SUITS[c.s];
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];}return a;}
 function newDeck(){const d=[];let id=0;for(let k=0;k<2;k++){for(let s=0;s<4;s++)for(let r=1;r<=13;r++)d.push({id:id++,r,s});d.push({id:id++,r:0,s:-1});}return shuffle(d);}
 
-function save(){if(NET.role==='guest')return;try{localStorage.setItem(KEY,JSON.stringify({S,sortMode,undoSnap}));}catch(e){}netSync();}
-function load(){try{const d=JSON.parse(localStorage.getItem(KEY));if(d&&d.S){S=d.S;sortMode=d.sortMode||'suit';undoSnap=d.undoSnap||null;return true;}}catch(e){}return false;}
+function save(){if(NET.role==='guest')return;try{localStorage.setItem(KEY,JSON.stringify({S,sortMode,undos}));}catch(e){}netSync();}
+function load(){try{const d=JSON.parse(localStorage.getItem(KEY));if(d&&d.S){S=d.S;sortMode=d.sortMode||'suit';undos=Array.isArray(d.undos)?d.undos:d.undoSnap?[d.undoSnap]:[];return true;}}catch(e){}return false;}
 
 let tt;function toast(t){const el=$('toast');el.innerHTML='<span></span><button aria-label="Fechar">×</button>';el.firstChild.textContent=t;el.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>el.classList.remove('on'),4400);}
 $('toast').addEventListener('click',e=>{e.stopPropagation();clearTimeout(tt);$('toast').classList.remove('on');});
@@ -270,7 +270,7 @@ function buildRun(cards){
     if(new Set(sv).size!==sv.length)continue;
     const mn=sv[0],mx=sv[sv.length-1],gaps=(mx-mn+1)-nat.length;
     const e=nat.map((c,i)=>({c,v:v[i]}));
-    if(gaps===0){if(jk.length){if(mx<14)e.push({c:jk[0],v:mx+1});else if(mn>1)e.push({c:jk[0],v:mn-1});else continue;}}
+    if(gaps===0){if(jk.length)continue;}                 // the joker only goes between two cards, never at an end
     else if(gaps===1&&jk.length){let m;for(let x=mn;x<=mx;x++)if(!sv.includes(x))m=x;e.push({c:jk[0],v:m});}
     else continue;
     e.sort((a,b)=>a.v-b.v);
@@ -285,12 +285,7 @@ function tryAdd(m,c){
     return{m:{...m,cards:[...m.cards,{c}]},joker:null};
   }
   const lo=m.cards[0].v,hi=m.cards[m.cards.length-1].v,full=hi-lo>=12;
-  if(c.r===0){
-    if(m.cards.some(e=>e.c.r===0)||full)return null;
-    if(hi<14)return{m:{...m,cards:[...m.cards,{c,v:hi+1}]},joker:null};
-    if(lo>1)return{m:{...m,cards:[{c,v:lo-1},...m.cards]},joker:null};
-    return null;
-  }
+  if(c.r===0)return null;                               // runs on the table have no gaps, so a joker has nowhere to go
   if(c.s!==m.suit)return null;
   for(const v of vals(c)){const ji=m.cards.findIndex(e=>e.c.r===0&&e.v===v);
     if(ji>=0){const cs=[...m.cards];const j=cs[ji].c;cs[ji]={c,v};return{m:{...m,cards:cs},joker:j};}}
@@ -313,7 +308,7 @@ function newGame(n,pass,names,level){
   startRound();
 }
 function startRound(){
-  S.round++;S.stock=newDeck();S.discard=[];S.melds=[];S.pickups=[];hintK=-1;S.mustUse=null;S.phase='draw';S.roundEnd=null;
+  S.round++;S.stock=newDeck();S.discard=[];S.melds=[];S.pickups=[];hintK=-1;S.mustUse=null;S.mustJk=null;S.phase='draw';S.roundEnd=null;
   S.players.forEach(p=>p.hand=[]);
   S.dealer=nextAlive(S.dealer);
   const order=alive();
@@ -323,7 +318,7 @@ function startRound(){
   S.turn=nextAlive(S.dealer);
   S.log=`Partida ${S.round}. ${S.mode==='bots'&&S.turn===0?'Você começa.':S.players[S.turn].name+' começa.'}`;
   if(S.mode==='pass'){S.handoff=true;}
-  sel.clear();undoSnap=null;save();
+  sel.clear();undos=[];save();
   anim=true;render();
   const gid=S.gid;requestAnimationFrame(async()=>{if(!S||S.gid!==gid)return;await dealAnim();if(!S||S.gid!==gid)return;anim=false;render();maybeBot();});
 }
@@ -332,7 +327,7 @@ function drawStock(i){
   if(!S.stock.length){endRound(-1);return false;}
   S.players[i].hand.push(S.stock.pop());return true;
 }
-function nextTurn(){hintK=-1;S.turn=nextAlive(S.turn);S.phase='draw';S.mustUse=null;undoSnap=null;
+function nextTurn(){hintK=-1;S.turn=nextAlive(S.turn);S.phase='draw';S.mustUse=null;S.mustJk=null;undos=[];
   if(S.mode==='pass')S.handoff=true;
   save();render();maybeBot();}
 function endRound(w){
@@ -343,7 +338,7 @@ function endRound(w){
   const al=alive();
   if((S.mode==='bots'&&S.players[0].out)||al.length<=1){S.over=true;
     const pool=al.length?al:S.players.map((p,i)=>i);S.champ=pool.sort((a,b)=>S.players[a].pts-S.players[b].pts)[0];}
-  undoSnap=null;sel.clear();busy=false;anim=false;save();render();
+  undos=[];sel.clear();busy=false;anim=false;save();render();
 }
 
 /* ---------- human actions ----------
@@ -356,14 +351,15 @@ function act(i,a){
   const pick=()=>ids.map(id=>p.hand.find(c=>c.id===id)).filter(Boolean);
   if(a.k==='draw'){if(S.phase!=='draw')return{err:''};if(!drawStock(i))return{};S.phase='play';return{ev:{k:'draw',p:i,c:p.hand[p.hand.length-1]}};}
   if(a.k==='take'){if(S.phase!=='draw'||!S.discard.length)return{err:''};
-    undoSnap=JSON.stringify(S);const c=S.discard.pop();p.hand.push(c);(S.pickups=S.pickups||[]).push({p:i,c});S.mustUse=c.id;S.phase='play';
+    undos.push(JSON.stringify(S));const c=S.discard.pop();p.hand.push(c);(S.pickups=S.pickups||[]).push({p:i,c});S.mustUse=c.id;S.phase='play';
     return{ev:{k:'take',p:i,c}};}
-  if(a.k==='undo'){if(!undoSnap)return{err:''};S=JSON.parse(undoSnap);undoSnap=null;return{ev:{k:'undo',p:i}};}
+  if(a.k==='undo'){if(!undos.length)return{err:''};S=JSON.parse(undos.pop());return{ev:{k:'undo',p:i}};}
   if(S.phase!=='play')return{err:'Primeiro compre do monte ou pegue do lixo.'};
+  const snap=JSON.stringify(S),keep=()=>{if(undoAll())undos.push(snap);};
   if(a.k==='lay'){const cs=pick();if(cs.length<3)return{err:'Um jogo precisa de pelo menos 3 cartas.'};
     const m=buildSet(cs)||buildRun(cs);
-    if(!m)return{err:'Jogo inválido. Use uma trinca (3–4 cartas do mesmo valor, naipes diferentes) ou uma sequência (3+ cartas seguidas do mesmo naipe).'};
-    m.owner=i;S.melds.push(m);const used=new Set(cs.map(c=>c.id));p.hand=p.hand.filter(c=>!used.has(c.id));
+    if(!m)return{err:cs.some(c=>c.r===0)?'O coringa só entra no meio de uma sequência, no lugar de uma carta que falta (ex.: 6, coringa, 8 do mesmo naipe).':'Jogo inválido. Use uma trinca (3–4 cartas do mesmo valor, naipes diferentes) ou uma sequência (3+ cartas seguidas do mesmo naipe).'};
+    keep();m.owner=i;S.melds.push(m);const used=new Set(cs.map(c=>c.id));p.hand=p.hand.filter(c=>!used.has(c.id));
     return{ev:{k:'lay',p:i,mk:S.melds.length-1,cs}};}
   if(a.k==='add'){const k=Number(a.mk),sc=pick();if(!S.melds[k])return{err:''};
     if(!sc.length)return{err:'Arraste cartas da mão até um jogo da mesa para encaixar.'};
@@ -371,10 +367,14 @@ function act(i,a){
     while(pend.length&&prog){prog=false;for(const c of[...pend]){const r=tryAdd(m,c);if(r){m=r.m;if(r.joker)got.push(r.joker);pend=pend.filter(x=>x!==c);prog=true;}}}
     const cs=sc.filter(c=>!pend.includes(c));
     if(!cs.length)return{err:whyNot(S.melds[k],pend[0])};
-    const used=new Set(cs.map(c=>c.id));S.melds[k]=m;p.hand=p.hand.filter(c=>!used.has(c.id));p.hand.push(...got);
+    const used=new Set(cs.map(c=>c.id)),nh=[...p.hand.filter(c=>!used.has(c.id)),...got];
+    if(got.some(j=>!swapOK(nh,j)))return{err:'Só dá para trocar o coringa se você puder baixá-lo agora numa sequência nova, entre duas cartas.'};
+    if(got.length&&!undoAll())undos.push(snap);
+    keep();S.melds[k]=m;p.hand=nh;if(got.length)S.mustJk=got[0].id;
     return{ev:{k:'add',p:i,mk:k,cs,got}};}
   if(a.k==='disc'){if(ids.length!==1)return{err:'Arraste só uma carta para o lixo.'};
     if(S.mustUse!=null&&p.hand.some(c=>c.id===S.mustUse))return{err:'Primeiro use a carta que pegou do lixo, ou toque em Desfazer.'};
+    if(S.mustJk!=null&&p.hand.some(c=>c.id===S.mustJk))return{err:'Primeiro baixe o coringa que você trocou numa sequência nova, ou toque em Desfazer.'};
     const c=pick()[0];if(!c)return{err:''};p.hand=p.hand.filter(x=>x!==c);S.discard.push(c);return{ev:{k:'disc',p:i,c}};}
   return{err:''};
 }
@@ -398,7 +398,9 @@ async function animEv(ev){
 }
 function settle(ev){
   const i=ev.p,p=S.players[i],nm=S.mode==='bots'&&i===0?'Você':p.name;hintK=-1;
-  if(ev.k==='lay'||ev.k==='add'){if(S.mustUse!=null&&!p.hand.some(c=>c.id===S.mustUse)){S.mustUse=null;undoSnap=null;}
+  if(ev.k==='lay'||ev.k==='add'){if(S.mustUse!=null&&!p.hand.some(c=>c.id===S.mustUse))S.mustUse=null;
+    if(S.mustJk!=null&&!p.hand.some(c=>c.id===S.mustJk))S.mustJk=null;
+    if(!undoAll()&&S.mustUse==null&&S.mustJk==null)undos=[];
     if(!p.hand.length){S.log=`${nm} bateu!`;endRound(i);return;}}
   else if(ev.k==='disc'){if(!p.hand.length){S.log=`${nm} bateu!`;endRound(i);return;}S.log=`${nm} descartou ${label(ev.c)}.`;nextTurn();return;}
   save();render();
@@ -411,12 +413,13 @@ async function play(a){
   if(r.err!=null){if(r.err)toast(r.err);return;}
   if(r.ev)await runEv(r.ev);
 }
+/* a joker swapped off the table must go straight into a new run, between two cards */
+const swapOK=(hand,j)=>genCands(hand).some(m=>m.cards.some(e=>e.c.id===j.id));
 const humanDraw=()=>play({k:'draw'}),humanTake=()=>play({k:'take'}),cancelTake=()=>play({k:'undo'});
 const layDown=()=>play({k:'lay',ids:[...sel]}),addTo=k=>play({k:'add',mk:k,ids:[...sel]}),discard=()=>play({k:'disc',ids:[...sel]});
 function whyNot(m,c){
   if(c.r===0){if(m.type==='set')return'O coringa só entra em sequência, não em trinca.';
-    if(m.cards.some(e=>e.c.r===0))return'Essa sequência já tem um coringa — só cabe um por sequência.';
-    return'Essa sequência já está completa.';}
+    return'O coringa não entra num jogo da mesa: ele só vai no meio de uma sequência nova, entre duas cartas (ex.: 6, coringa, 8).';}
   if(m.type==='set')return'Essa carta não cabe nessa trinca.';
   return'Essa carta não encaixa nessa sequência.';
 }
@@ -431,7 +434,7 @@ function genCands(hand){
     for(let a=1;a<=12;a++)for(let b=a+2;b<=14&&b-a<=12;b++){const miss=[],cs=[];
       for(let v=a;v<=b;v++){if(at[v])cs.push({c:at[v],v});else miss.push(v);}
       if(!miss.length)out.push({type:'run',suit:s,cards:cs});
-      else if(miss.length===1)for(const j of jks)out.push({type:'run',suit:s,cards:[...cs,{c:j,v:miss[0]}].sort((x,y)=>x.v-y.v)});}}
+      else if(miss.length===1&&miss[0]!==a&&miss[0]!==b)for(const j of jks)out.push({type:'run',suit:s,cards:[...cs,{c:j,v:miss[0]}].sort((x,y)=>x.v-y.v)});}}
   return out;
 }
 function bestMelds(hand,mustId,freeMust){
@@ -448,14 +451,19 @@ function bestMelds(hand,mustId,freeMust){
 }
 function botWants(hand,top){
   if(genCands([...hand,top]).some(m=>m.cards.some(e=>e.c.id===top.id)))return true;
-  return S.melds.some(m=>{const r=tryAdd(m,top);return r&&r.joker;});
+  return S.melds.some(m=>{const r=tryAdd(m,top);return r&&r.joker&&swapOK([...hand,r.joker],r.joker);});
 }
 function botAddTable(p){
   let ch=true;const any=[];
   while(ch){ch=false;
     for(const c of[...p.hand]){if(!p.hand.includes(c))continue;if(c.r===0&&p.hand.length>2)continue;
       for(let k=0;k<S.melds.length;k++){const r=tryAdd(S.melds[k],c);
-        if(r){S.melds[k]=r.m;p.hand=p.hand.filter(x=>x.id!==c.id);if(r.joker)p.hand.push(r.joker);ch=true;any.push({k,c});break;}}}}
+        if(!r||(r.joker&&!swapOK([...p.hand.filter(x=>x.id!==c.id),r.joker],r.joker)))continue;
+        S.melds[k]=r.m;p.hand=p.hand.filter(x=>x.id!==c.id);ch=true;any.push({k,c});
+        if(r.joker){p.hand.push(r.joker);const run=genCands(p.hand).filter(m=>m.cards.some(e=>e.c.id===r.joker.id)).sort((a,b)=>b.cards.length-a.cards.length)[0];
+          run.owner=S.players.indexOf(p);S.melds.push(run);const nk=S.melds.length-1,ids=new Set(run.cards.map(e=>e.c.id));
+          p.hand=p.hand.filter(x=>!ids.has(x.id));run.cards.forEach(e=>any.push({k:nk,c:e.c}));}
+        break;}}}
   return any;
 }
 function botDiscard(hand){
@@ -470,12 +478,14 @@ function botDiscard(hand){
 }
 /* ---------- levels ---------- */
 const LV={easy:'Iniciante',mid:'Intermediário',hard:'Avançado'};
-const LVD={easy:'Tem botão de dica, e o computador erra de vez em quando.',
+const LVD={easy:'Tem os botões Dica e Desfazer, e o computador erra de vez em quando.',
   mid:'O computador joga bem, sem estratégia avançada.',
   hard:'O computador não erra: lembra das cartas que já saíram, evita te dar cartas úteis e pode segurar os jogos para baixar tudo de uma vez.'};
 const LKEY='pontinho-level';
 let lvlPick='mid';try{const v=localStorage.getItem(LKEY);if(LV[v])lvlPick=v;}catch(e){}
 const lvl=()=>(S&&S.level)||'mid';
+/* Iniciante: Desfazer takes back any lay or add made this turn, not just taking from the discard */
+const undoAll=()=>S.mode==='bots'&&lvl()==='easy';
 let hintK=-1;
 /* beginner bots slip now and then: skip a useful discard, lay only part of their melds, forget to add to the table, throw a random card */
 function slips(level){return level==='easy'?{take:Math.random()<.35,lay:Math.random()<.3,add:Math.random()<.3,disc:Math.random()<.25}:{};}
@@ -543,8 +553,8 @@ function hint(){
     else toast('O lixo não ajuda agora. Compre do monte: toque no monte.');
     return;
   }
-  const mc=S.mustUse!=null?h.find(c=>c.id===S.mustUse):null;
-  const fitK=c=>S.melds.findIndex(m=>tryAdd(m,c));
+  const mid=S.mustUse!=null&&h.some(c=>c.id===S.mustUse)?S.mustUse:S.mustJk,mc=mid!=null?h.find(c=>c.id===mid):null;
+  const fitK=c=>S.melds.findIndex(m=>{const r=tryAdd(m,c);return r&&(!r.joker||swapOK([...h.filter(x=>x.id!==c.id),r.joker],r.joker));});
   if(mc&&fitK(mc)>=0){sel=new Set([mc.id]);hintK=fitK(mc);render();toast(`O ${label(mc)} encaixa no jogo destacado na mesa. Toque nele.`);return;}
   const plan=bestMelds(h,mc?mc.id:null,false)||[];
   if(plan.length){const m=(mc&&plan.find(x=>x.cards.some(e=>e.c.id===mc.id)))||plan[0],cs=m.cards.map(e=>e.c);
@@ -608,11 +618,11 @@ function render(){
   const canPlay=myTurn()&&S.phase==='play';
   $('table').innerHTML=S.melds.length?S.melds.map((m,k)=>`<div class="meld${k===hintK?' hinted':''}" data-k="${k}" style="border-left-color:${COLORS[m.owner]}">${
     m.cards.map(e=>cardHTML(e.c,'',e.c.r===0?RANKS[e.v]:'')).join('')}</div>`).join(''):'<div class="empty-t">Os jogos baixados aparecem aqui</div>';
-  if(!(drag&&drag.on))$('hand').innerHTML=hide?'':me().hand.map(c=>cardHTML(c,(sel.has(c.id)?'sel ':'')+(S.mustUse===c.id?'must':''))).join('');
+  if(!(drag&&drag.on))$('hand').innerHTML=hide?'':me().hand.map(c=>cardHTML(c,(sel.has(c.id)?'sel ':'')+(S.mustUse===c.id||S.mustJk===c.id?'must':''))).join('');
   fitHand();
   const hp=me().hand.reduce((t,c)=>t+pts(c),0);
   $('me').innerHTML=`<span><span class="nm ${S.turn===S.view&&!S.roundEnd?'turn':''}">${S.mode==='pass'?me().name:'Você'}</span> · ${me().pts} pts${me().out?' (fora)':''}</span><span>${hide?'':'Valor na mão: '+hp}</span>`;
-  $('cancelBtn').hidden=!((NET.role==='guest'?S.undo:undoSnap)&&myTurn());
+  $('cancelBtn').hidden=!((NET.role==='guest'?S.undo:undos.length)&&myTurn());
   const easy=S.mode==='bots'&&lvl()==='easy';$('hintBtn').hidden=!easy;$('hintBtn').disabled=!myTurn();
   const tag=$('lvlTag'),online=S.mode==='online';
   tag.textContent=online?(NET.up?'Online':NET.role==='host'?`Aguardando ${S.players[1].name}…`:'Reconectando…'):S.mode==='bots'?LV[lvl()]:'';
@@ -688,8 +698,8 @@ function showRules(){
   <li>Dois baralhos e 2 coringas. Cada jogador recebe 9 cartas.</li>
   <li>Na sua vez, <b>compre</b> do monte ou <b>pegue a carta do lixo</b> — mas só se for usá-la num jogo nessa mesma vez.</li>
   <li><b>Jogos:</b> <i>trinca</i> são 3–4 cartas do mesmo valor e naipes diferentes. <i>Sequência</i> são 3+ cartas seguidas do mesmo naipe (o Ás vale antes do 2 ou depois do K, sem dar a volta).</li>
-  <li><b>Níveis</b> (contra o computador): no <i>Iniciante</i> você tem o botão <b>Dica</b> e o computador erra às vezes; no <i>Avançado</i> ele lembra das cartas que já saíram e pode guardar os jogos para baixar tudo de uma vez.</li>
-  <li>O coringa só entra em sequências (um por sequência). Se você tiver a carta que ele substitui, encaixe-a nesse jogo e o coringa vem para a sua mão.</li>
+  <li><b>Níveis</b> (contra o computador): no <i>Iniciante</i> você tem os botões <b>Dica</b> e <b>Desfazer</b> (volta as jogadas da sua vez, até descartar) e o computador erra às vezes; no <i>Avançado</i> ele lembra das cartas que já saíram e pode guardar os jogos para baixar tudo de uma vez.</li>
+  <li>O coringa só entra no meio de uma sequência, no lugar de uma carta que falta (ex.: 6, coringa, 8) — nunca na ponta nem em trinca. Se você tiver a carta que ele substitui, pode trocar: o coringa vem para a sua mão, mas você precisa baixá-lo na mesma vez, no meio de outra sequência nova.</li>
   <li>Arraste as cartas dentro da mão para reorganizar, ou escolha <b>Naipe</b> ou <b>Valor</b> e toque em <b>Ordenar</b>.</li>
   <li>Toque nas cartas para selecionar e depois toque no destino — ou arraste. Na <b>mesa</b> para baixar um jogo novo, num <b>jogo da mesa</b> para encaixar, no <b>lixo</b> para descartar (isso termina a sua vez).</li>
   <li>Quem ficar sem cartas <b>bate</b>. Os outros somam as cartas da mão: 2–10 valem o número, J/Q/K 10, Ás 15, coringa 20.</li>
@@ -719,7 +729,7 @@ function netSend(m){try{if(NET.conn&&NET.conn.open)NET.conn.send(m);}catch(e){}}
 function redact(){
   const s=JSON.parse(JSON.stringify(S));
   s.players.forEach((p,i)=>{delete p.tok;if(i!==1)p.hand=Array(p.hand.length).fill(0);});
-  s.stock=Array(S.stock.length).fill(0);s.view=1;s.undo=!!undoSnap&&S.turn===1;
+  s.stock=Array(S.stock.length).fill(0);s.view=1;s.undo=!!undos.length&&S.turn===1;
   return s;
 }
 function evFor(ev){const e=JSON.parse(JSON.stringify(ev));if(e.k==='draw'&&e.p!==1)delete e.c;return e;}
