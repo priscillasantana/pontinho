@@ -3,6 +3,9 @@
 Cada atualização ganha um número de versão (`maior.menor.correção`), uma entrada aqui e uma tag no GitHub.
 No jogo, a versão aparece no canto inferior direito.
 
+## v1.7.1 — 20/11/2026
+- No Iniciante, o botão Desfazer fica sempre na tela, apagado quando não há nada para desfazer (antes ele só aparecia depois de pegar do lixo, baixar ou encaixar cartas).
+
 ## v1.7.0 — 19/11/2026
 - No nível Iniciante, o botão Desfazer volta qualquer jogo baixado ou carta encaixada na sua vez, um passo de cada vez, até você descartar. Comprar do monte não dá para desfazer.
 - Regras do coringa mais fiéis ao Pontinho tradicional:

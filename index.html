@@ -34,6 +34,7 @@ h1 small.off{background:#7a2b2b;color:#fff}
 .lvl button.on{background:#e6ebe7;color:#141a17}
 .lvl-d{font-size:13px!important;opacity:.8;margin:6px 0 0;min-height:3em}
 #bar button.hint{flex:0 0 auto;padding:0 12px;background:#4fc3f7;color:#062a3a}
+#bar #cancelBtn{flex:0 0 auto;padding:0 12px}
 .meld.hinted{border-color:#4fc3f7;border-left-color:#4fc3f7;box-shadow:0 0 0 2px #4fc3f7}
 button{font:inherit;cursor:pointer}
 .ib{background:rgba(255,255,255,.13);border:0;color:#fff;border-radius:12px;padding:9px 14px;min-height:40px}
@@ -89,12 +90,13 @@ button{font:inherit;cursor:pointer}
 #bar{display:flex;gap:6px;padding-top:6px}
 #bar button{flex:1;min-height:48px;border-radius:13px;border:0;font-weight:700;background:var(--gold);color:#2a1f00;padding:0 4px}
 #bar button.sec{background:rgba(255,255,255,.15);color:#fff}
-#bar button:disabled{opacity:.33}
+#bar button:disabled,#bar button.off{opacity:.33}
 #bar button[hidden]{display:none}
 .seg{flex:1;display:flex;background:rgba(255,255,255,.1);border-radius:13px;padding:3px;gap:3px}
 #bar .seg button{flex:1;min-height:42px;border-radius:10px;background:transparent;color:#cfd6d1;font-weight:600}
 #bar .seg button.on{background:#e6ebe7;color:#141a17}
 #bar button.tiny{flex:0 0 auto;padding:0 14px;font-size:15px;background:var(--gold);color:#2a1f00}
+@media (max-width:420px){#bar{gap:5px}#bar button.hint,#bar #cancelBtn,#bar button.tiny{padding:0 9px;font-size:14px}}
 .ov{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:18px;z-index:10}
 .panel{background:#141a17;border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:20px;width:100%;max-width:420px;max-height:86vh;overflow:auto;box-shadow:0 12px 40px rgba(0,0,0,.55)}
 .panel h2{margin:0 0 6px;font-size:24px}
@@ -183,7 +185,7 @@ button{font:inherit;cursor:pointer}
 <script>
 {
 /* ---------- version: bump with every update, add an entry to CHANGELOG.md and tag the commit ---------- */
-const VERSION='1.7.0';
+const VERSION='1.7.1';
 const RANKS=['★','A','2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const SUITS=['♠','♥','♣','♦'];
 const NAMES=['Você','Ana','Beto','Caio'];const PNAMES=['Jogador 1','Jogador 2'];
@@ -622,8 +624,9 @@ function render(){
   fitHand();
   const hp=me().hand.reduce((t,c)=>t+pts(c),0);
   $('me').innerHTML=`<span><span class="nm ${S.turn===S.view&&!S.roundEnd?'turn':''}">${S.mode==='pass'?me().name:'Você'}</span> · ${me().pts} pts${me().out?' (fora)':''}</span><span>${hide?'':'Valor na mão: '+hp}</span>`;
-  $('cancelBtn').hidden=!((NET.role==='guest'?S.undo:undos.length)&&myTurn());
-  const easy=S.mode==='bots'&&lvl()==='easy';$('hintBtn').hidden=!easy;$('hintBtn').disabled=!myTurn();
+  const easy=S.mode==='bots'&&lvl()==='easy',canUndo=!!((NET.role==='guest'?S.undo:undos.length)&&myTurn());
+  $('cancelBtn').hidden=!(canUndo||easy);$('cancelBtn').classList.toggle('off',!canUndo);   // Iniciante: always on screen, dimmed when there is nothing to undo
+  $('hintBtn').hidden=!easy;$('hintBtn').disabled=!myTurn();
   const tag=$('lvlTag'),online=S.mode==='online';
   tag.textContent=online?(NET.up?'Online':NET.role==='host'?`Aguardando ${S.players[1].name}…`:'Reconectando…'):S.mode==='bots'?LV[lvl()]:'';
   tag.classList.toggle('off',online&&!NET.up);
@@ -959,7 +962,7 @@ document.addEventListener('click',e=>{
   else if(e.target.closest('#discP')){if(playing){if(sel.size===1)discard();else toast('Selecione só uma carta para descartar.');}else humanTake();}
   else if(playing&&e.target.closest('#table')){if(sel.size>=3)layDown();else toast('Um jogo precisa de pelo menos 3 cartas.');}
 });
-$('cancelBtn').onclick=cancelTake;
+$('cancelBtn').onclick=()=>{if($('cancelBtn').classList.contains('off')){toast('Nada para desfazer agora. Dá para desfazer pegar do lixo, baixar jogos e encaixar cartas — até você descartar. Comprar do monte não volta.');return;}cancelTake();};
 $('hintBtn').onclick=e=>{e.stopPropagation();hint();};
 $('sortBtn').onclick=()=>{if(!S||S.handoff||(drag&&drag.on))return;me().hand=sortBy(me().hand,sortMode);save();render();};
 $('seg').onclick=e=>{const b=e.target.closest('[data-sort]');if(!b)return;sortMode=b.dataset.sort;save();render();};
