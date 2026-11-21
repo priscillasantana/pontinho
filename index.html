@@ -185,7 +185,7 @@ button{font:inherit;cursor:pointer}
 <script>
 {
 /* ---------- version: bump with every update, add an entry to CHANGELOG.md and tag the commit ---------- */
-const VERSION='1.7.1';
+const VERSION='1.8.0';
 const RANKS=['★','A','2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const SUITS=['♠','♥','♣','♦'];
 const NAMES=['Você','Ana','Beto','Caio'];const PNAMES=['Jogador 1','Jogador 2'];
@@ -365,6 +365,8 @@ function act(i,a){
     return{ev:{k:'lay',p:i,mk:S.melds.length-1,cs}};}
   if(a.k==='add'){const k=Number(a.mk),sc=pick();if(!S.melds[k])return{err:''};
     if(!sc.length)return{err:'Arraste cartas da mão até um jogo da mesa para encaixar.'};
+    const jm=addWithJoker(S.melds[k],sc);
+    if(jm){keep();const used=new Set(sc.map(c=>c.id));S.melds[k]=jm;p.hand=p.hand.filter(c=>!used.has(c.id));return{ev:{k:'add',p:i,mk:k,cs:sc,got:[]}};}
     let m=S.melds[k],pend=[...sc],got=[],prog=true;
     while(pend.length&&prog){prog=false;for(const c of[...pend]){const r=tryAdd(m,c);if(r){m=r.m;if(r.joker)got.push(r.joker);pend=pend.filter(x=>x!==c);prog=true;}}}
     const cs=sc.filter(c=>!pend.includes(c));
@@ -419,9 +421,15 @@ async function play(a){
 const swapOK=(hand,j)=>genCands(hand).some(m=>m.cards.some(e=>e.c.id===j.id));
 const humanDraw=()=>play({k:'draw'}),humanTake=()=>play({k:'take'}),cancelTake=()=>play({k:'undo'});
 const layDown=()=>play({k:'lay',ids:[...sel]}),addTo=k=>play({k:'add',mk:k,ids:[...sel]}),discard=()=>play({k:'disc',ids:[...sel]});
+/* a run on the table with no joker can take one joker plus the natural card(s) that put it between two cards: 4-5-6 + joker + 2 = 2-★-4-5-6 */
+function addWithJoker(m,cs){
+  if(m.type!=='run'||m.cards.some(e=>e.c.r===0)||cs.filter(c=>c.r===0).length!==1)return null;
+  const r=buildRun([...m.cards.map(e=>e.c),...cs]);return r?{...m,...r}:null;
+}
 function whyNot(m,c){
   if(c.r===0){if(m.type==='set')return'O coringa só entra em sequência, não em trinca.';
-    return'O coringa não entra num jogo da mesa: ele só vai no meio de uma sequência nova, entre duas cartas (ex.: 6, coringa, 8).';}
+    if(m.cards.some(e=>e.c.r===0))return'Essa sequência já tem um coringa — só cabe um por sequência.';
+    return'O coringa precisa ficar entre duas cartas. Selecione junto a carta que vem depois dele (ex.: na sequência 4-5-6, coringa + 2 ou coringa + 8).';}
   if(m.type==='set')return'Essa carta não cabe nessa trinca.';
   return'Essa carta não encaixa nessa sequência.';
 }
@@ -466,6 +474,9 @@ function botAddTable(p){
           run.owner=S.players.indexOf(p);S.melds.push(run);const nk=S.melds.length-1,ids=new Set(run.cards.map(e=>e.c.id));
           p.hand=p.hand.filter(x=>!ids.has(x.id));run.cards.forEach(e=>any.push({k:nk,c:e.c}));}
         break;}}}
+  for(const j of p.hand.filter(c=>c.r===0)){let done=false;
+    for(let k=0;k<S.melds.length&&!done;k++)for(const c of p.hand){if(c.r===0)continue;const jm=addWithJoker(S.melds[k],[j,c]);
+      if(jm){S.melds[k]=jm;p.hand=p.hand.filter(x=>x!==j&&x!==c);any.push({k,c:j},{k,c});done=true;break;}}}
   return any;
 }
 function botDiscard(hand){
@@ -563,6 +574,8 @@ function hint(){
     sel=new Set(cs.map(c=>c.id));hintK=-1;render();
     toast(`Você pode baixar ${m.type==='set'?'uma trinca':'uma sequência'}: ${L(cs)}. Já selecionei — toque na mesa.`);return;}
   for(const c of h){const k=fitK(c);if(k>=0){sel=new Set([c.id]);hintK=k;render();toast(`O ${label(c)} encaixa no jogo destacado na mesa. Toque nele.`);return;}}
+  for(const j of h.filter(c=>c.r===0))for(let k=0;k<S.melds.length;k++)for(const c of h)if(c.r&&addWithJoker(S.melds[k],[j,c])){
+    sel=new Set([j.id,c.id]);hintK=k;render();toast(`O coringa e o ${label(c)} encaixam juntos no jogo destacado na mesa. Já selecionei — toque nele.`);return;}
   const d=smartDiscard(S.view,h);sel=new Set([d.id]);hintK=-1;render();
   toast(`Nenhum jogo por agora. Sugestão: descarte o ${label(d)} — toque no lixo.`);
 }
@@ -702,7 +715,7 @@ function showRules(){
   <li>Na sua vez, <b>compre</b> do monte ou <b>pegue a carta do lixo</b> — mas só se for usá-la num jogo nessa mesma vez.</li>
   <li><b>Jogos:</b> <i>trinca</i> são 3–4 cartas do mesmo valor e naipes diferentes. <i>Sequência</i> são 3+ cartas seguidas do mesmo naipe (o Ás vale antes do 2 ou depois do K, sem dar a volta).</li>
   <li><b>Níveis</b> (contra o computador): no <i>Iniciante</i> você tem os botões <b>Dica</b> e <b>Desfazer</b> (volta as jogadas da sua vez, até descartar) e o computador erra às vezes; no <i>Avançado</i> ele lembra das cartas que já saíram e pode guardar os jogos para baixar tudo de uma vez.</li>
-  <li>O coringa só entra no meio de uma sequência, no lugar de uma carta que falta (ex.: 6, coringa, 8) — nunca na ponta nem em trinca. Se você tiver a carta que ele substitui, pode trocar: o coringa vem para a sua mão, mas você precisa baixá-lo na mesma vez, no meio de outra sequência nova.</li>
+  <li>O coringa só entra no meio de uma sequência, no lugar de uma carta que falta (ex.: 6, coringa, 8) — nunca na ponta nem em trinca. Dá para pôr o coringa numa sequência da mesa que ainda não tem coringa, junto com a carta que o deixa no meio (ex.: na mesa 4-5-6, coringa + 2 vira 2-coringa-4-5-6). Se você tiver a carta que ele substitui, pode trocar: o coringa vem para a sua mão, mas você precisa baixá-lo na mesma vez, no meio de outra sequência nova.</li>
   <li>Arraste as cartas dentro da mão para reorganizar, ou escolha <b>Naipe</b> ou <b>Valor</b> e toque em <b>Ordenar</b>.</li>
   <li>Toque nas cartas para selecionar e depois toque no destino — ou arraste. Na <b>mesa</b> para baixar um jogo novo, num <b>jogo da mesa</b> para encaixar, no <b>lixo</b> para descartar (isso termina a sua vez).</li>
   <li>Quem ficar sem cartas <b>bate</b>. Os outros somam as cartas da mão: 2–10 valem o número, J/Q/K 10, Ás 15, coringa 20.</li>

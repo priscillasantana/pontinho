@@ -3,6 +3,10 @@
 Cada atualização ganha um número de versão (`maior.menor.correção`), uma entrada aqui e uma tag no GitHub.
 No jogo, a versão aparece no canto inferior direito.
 
+## v1.8.0 — 21/11/2026
+- Dá para pôr o coringa numa sequência da mesa que ainda não tem coringa, junto com a carta que o deixa entre duas cartas. Ex.: na mesa 4-5-6, coringa + 2 vira 2-coringa-4-5-6.
+- O computador e o botão Dica também usam essa jogada.
+
 ## v1.7.1 — 20/11/2026
 - No Iniciante, o botão Desfazer fica sempre na tela, apagado quando não há nada para desfazer (antes ele só aparecia depois de pegar do lixo, baixar ou encaixar cartas).
 
