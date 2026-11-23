@@ -3,6 +3,10 @@
 Cada atualização ganha um número de versão (`maior.menor.correção`), uma entrada aqui e uma tag no GitHub.
 No jogo, a versão aparece no canto inferior direito.
 
+## v1.9.0 — 23/11/2026
+- A sequência pode virar no Ás: Q-K-A-2-3 do mesmo naipe vale. Dá para encaixar o 2 depois de um Ás da mesa, ou o K antes de um A-2-3.
+- O computador também monta e completa sequências assim.
+
 ## v1.8.0 — 21/11/2026
 - Dá para pôr o coringa numa sequência da mesa que ainda não tem coringa, junto com a carta que o deixa entre duas cartas. Ex.: na mesa 4-5-6, coringa + 2 vira 2-coringa-4-5-6.
 - O computador e o botão Dica também usam essa jogada.

@@ -185,7 +185,7 @@ button{font:inherit;cursor:pointer}
 <script>
 {
 /* ---------- version: bump with every update, add an entry to CHANGELOG.md and tag the commit ---------- */
-const VERSION='1.8.0';
+const VERSION='1.9.0';
 const RANKS=['★','A','2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const SUITS=['♠','♥','♣','♦'];
 const NAMES=['Você','Ana','Beto','Caio'];const PNAMES=['Jogador 1','Jogador 2'];
@@ -198,7 +198,7 @@ const $=id=>document.getElementById(id);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 const pts=c=>c.r===0?20:c.r===1?15:c.r>=11?10:c.r;
-const vals=c=>c.r===1?[1,14]:[c.r];
+const vals=c=>c.r===0?[]:c.r===1?[1,14]:[c.r,c.r+13];
 const isRed=c=>c.s===1||c.s===3;
 const label=c=>c.r===0?'Coringa':RANKS[c.r]+SUITS[c.s];
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];}return a;}
@@ -262,21 +262,25 @@ function buildSet(cards){
   if(new Set(cards.map(c=>c.s)).size!==cards.length)return null;
   return{type:'set',cards:cards.map(c=>({c}))};
 }
+/* run values: A is 1 or 14, every other rank r is r or r+13, so a run can turn the corner at the Ace (Q-K-A-2-3).
+   A run may hold at most 13 cards (no rank twice). */
+const rk=v=>RANKS[((v-1)%13)+1];
 function buildRun(cards){
-  if(cards.length<3)return null;
+  if(cards.length<3||cards.length>13)return null;
   const jk=cards.filter(c=>c.r===0),nat=cards.filter(c=>c.r!==0);
   if(jk.length>1||nat.length<2)return null;
   const s=nat[0].s;if(!nat.every(c=>c.s===s))return null;
-  for(const hi of[false,true]){
-    const v=nat.map(c=>c.r===1&&hi?14:c.r),sv=[...v].sort((a,b)=>a-b);
-    if(new Set(sv).size!==sv.length)continue;
+  for(let st=1;st<=13;st++){                            // st = lowest value of the run
+    const v=nat.map(c=>vals(c).find(x=>x>=st&&x<=st+12));
+    if(v.some(x=>x==null))continue;
+    const sv=[...v].sort((a,b)=>a-b);
+    if(sv[0]!==st||new Set(sv).size!==sv.length)continue;
     const mn=sv[0],mx=sv[sv.length-1],gaps=(mx-mn+1)-nat.length;
     const e=nat.map((c,i)=>({c,v:v[i]}));
     if(gaps===0){if(jk.length)continue;}                 // the joker only goes between two cards, never at an end
     else if(gaps===1&&jk.length){let m;for(let x=mn;x<=mx;x++)if(!sv.includes(x))m=x;e.push({c:jk[0],v:m});}
     else continue;
     e.sort((a,b)=>a.v-b.v);
-    if(e[e.length-1].v-e[0].v>12)continue;
     return{type:'run',suit:s,cards:e};
   }
   return null;
@@ -286,17 +290,12 @@ function tryAdd(m,c){
     if(c.r===0||c.r!==m.cards[0].c.r||m.cards.length>=4||m.cards.some(e=>e.c.s===c.s))return null;
     return{m:{...m,cards:[...m.cards,{c}]},joker:null};
   }
-  const lo=m.cards[0].v,hi=m.cards[m.cards.length-1].v,full=hi-lo>=12;
   if(c.r===0)return null;                               // runs on the table have no gaps, so a joker has nowhere to go
   if(c.s!==m.suit)return null;
   for(const v of vals(c)){const ji=m.cards.findIndex(e=>e.c.r===0&&e.v===v);
     if(ji>=0){const cs=[...m.cards];const j=cs[ji].c;cs[ji]={c,v};return{m:{...m,cards:cs},joker:j};}}
-  if(full)return null;
-  for(const v of vals(c)){
-    if(v===hi+1)return{m:{...m,cards:[...m.cards,{c,v}]},joker:null};
-    if(v===lo-1)return{m:{...m,cards:[{c,v},...m.cards]},joker:null};
-  }
-  return null;
+  const r=buildRun([...m.cards.map(e=>e.c),c]);       // fits at either end, including around the Ace
+  return r?{m:{...m,...r},joker:null}:null;
 }
 
 /* ---------- game flow ---------- */
@@ -441,7 +440,7 @@ function genCands(hand){
     if(cs.length>=3){for(let a=0;a<cs.length;a++)for(let b=a+1;b<cs.length;b++)for(let d=b+1;d<cs.length;d++)out.push({type:'set',cards:[cs[a],cs[b],cs[d]].map(c=>({c}))});
       if(cs.length===4)out.push({type:'set',cards:cs.map(c=>({c}))});}}
   for(let s=0;s<4;s++){const at={};hand.forEach(c=>{if(c.s===s)for(const v of vals(c))if(!at[v])at[v]=c;});
-    for(let a=1;a<=12;a++)for(let b=a+2;b<=14&&b-a<=12;b++){const miss=[],cs=[];
+    for(let a=1;a<=13;a++)for(let b=a+2;b-a<=12;b++){const miss=[],cs=[];
       for(let v=a;v<=b;v++){if(at[v])cs.push({c:at[v],v});else miss.push(v);}
       if(!miss.length)out.push({type:'run',suit:s,cards:cs});
       else if(miss.length===1&&miss[0]!==a&&miss[0]!==b)for(const j of jks)out.push({type:'run',suit:s,cards:[...cs,{c:j,v:miss[0]}].sort((x,y)=>x.v-y.v)});}}
@@ -632,7 +631,7 @@ function render(){
   $('discP').innerHTML=`<div class="stack">${und?cardHTML(und,'under'):'<div class="card none"></div>'}${top?cardHTML(top,'top'):''}</div><span>Lixo</span>`;
   const canPlay=myTurn()&&S.phase==='play';
   $('table').innerHTML=S.melds.length?S.melds.map((m,k)=>`<div class="meld${k===hintK?' hinted':''}" data-k="${k}" style="border-left-color:${COLORS[m.owner]}">${
-    m.cards.map(e=>cardHTML(e.c,'',e.c.r===0?RANKS[e.v]:'')).join('')}</div>`).join(''):'<div class="empty-t">Os jogos baixados aparecem aqui</div>';
+    m.cards.map(e=>cardHTML(e.c,'',e.c.r===0?rk(e.v):'')).join('')}</div>`).join(''):'<div class="empty-t">Os jogos baixados aparecem aqui</div>';
   if(!(drag&&drag.on))$('hand').innerHTML=hide?'':me().hand.map(c=>cardHTML(c,(sel.has(c.id)?'sel ':'')+(S.mustUse===c.id||S.mustJk===c.id?'must':''))).join('');
   fitHand();
   const hp=me().hand.reduce((t,c)=>t+pts(c),0);
@@ -715,7 +714,7 @@ function showRules(){
   <li>Na sua vez, <b>compre</b> do monte ou <b>pegue a carta do lixo</b> — mas só se for usá-la num jogo nessa mesma vez.</li>
   <li><b>Jogos:</b> <i>trinca</i> são 3–4 cartas do mesmo valor e naipes diferentes. <i>Sequência</i> são 3+ cartas seguidas do mesmo naipe (o Ás vale antes do 2 ou depois do K, sem dar a volta).</li>
   <li><b>Níveis</b> (contra o computador): no <i>Iniciante</i> você tem os botões <b>Dica</b> e <b>Desfazer</b> (volta as jogadas da sua vez, até descartar) e o computador erra às vezes; no <i>Avançado</i> ele lembra das cartas que já saíram e pode guardar os jogos para baixar tudo de uma vez.</li>
-  <li>O coringa só entra no meio de uma sequência, no lugar de uma carta que falta (ex.: 6, coringa, 8) — nunca na ponta nem em trinca. Dá para pôr o coringa numa sequência da mesa que ainda não tem coringa, junto com a carta que o deixa no meio (ex.: na mesa 4-5-6, coringa + 2 vira 2-coringa-4-5-6). Se você tiver a carta que ele substitui, pode trocar: o coringa vem para a sua mão, mas você precisa baixá-lo na mesma vez, no meio de outra sequência nova.</li>
+  <li>O coringa só entra no meio de uma sequência, no lugar de uma carta que falta (ex.: 6, coringa, 8) — nunca na ponta nem em trinca. A sequência pode virar no Ás: Q-K-A-2-3 vale. Dá para pôr o coringa numa sequência da mesa que ainda não tem coringa, junto com a carta que o deixa no meio (ex.: na mesa 4-5-6, coringa + 2 vira 2-coringa-4-5-6). Se você tiver a carta que ele substitui, pode trocar: o coringa vem para a sua mão, mas você precisa baixá-lo na mesma vez, no meio de outra sequência nova.</li>
   <li>Arraste as cartas dentro da mão para reorganizar, ou escolha <b>Naipe</b> ou <b>Valor</b> e toque em <b>Ordenar</b>.</li>
   <li>Toque nas cartas para selecionar e depois toque no destino — ou arraste. Na <b>mesa</b> para baixar um jogo novo, num <b>jogo da mesa</b> para encaixar, no <b>lixo</b> para descartar (isso termina a sua vez).</li>
   <li>Quem ficar sem cartas <b>bate</b>. Os outros somam as cartas da mão: 2–10 valem o número, J/Q/K 10, Ás 15, coringa 20.</li>
