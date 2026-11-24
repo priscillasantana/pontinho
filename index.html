@@ -159,6 +159,30 @@ button{font:inherit;cursor:pointer}
   #toast{bottom:calc(env(safe-area-inset-bottom) + 130px)!important}
 }
 @media (prefers-reduced-motion:reduce){.card{transition:none}}
+/* ---------- Aparência: table and card designs (Menu → Aparência) ---------- */
+/* Mesa escura: plain black instead of green felt */
+html[data-mesa="dark"],html[data-mesa="dark"] body{background:#000}
+[data-mesa="dark"] .plate{background:#141414;border-color:#2c2c2c}
+[data-mesa="dark"] .plate b{color:#eee}[data-mesa="dark"] .plate small{color:#a8a8a8}
+[data-mesa="dark"] #table{background:rgba(255,255,255,.04)}
+[data-mesa="dark"] .meld{background:rgba(255,255,255,.07)}
+[data-mesa="dark"] .panel{background:#0e0e0e;border-color:#262626}
+[data-mesa="dark"] .ov{background:rgba(0,0,0,.85)}
+/* Cartas quatro cores: ♣ green and ♦ blue, blue backs */
+[data-cartas="four"] .card.s2{color:#16803a}
+[data-cartas="four"] .card.s3{color:#1f5fc4}
+[data-cartas="four"] .card.back{background:repeating-linear-gradient(45deg,#1d4a9a 0 6px,#2a5cb8 6px 12px)}
+/* Cartas pretas: black faces, light ink, black and gold backs */
+[data-cartas="black"] .card:not(.none):not(.back){background:#111;color:#f2f2f2;box-shadow:inset 0 0 0 1px #3b3b3b,0 1px 3px rgba(0,0,0,.6)}
+[data-cartas="black"] .card.red:not(.none):not(.back){color:#ff6b6b}
+[data-cartas="black"] .card.jk .jkw{color:#ff6b6b}
+[data-cartas="black"] .card.jk .jkh path[fill="#161616"]{fill:#e6e6e6}
+[data-cartas="black"] .card.back{background:repeating-linear-gradient(45deg,#121212 0 6px,#1f1f1f 6px 12px);border-color:var(--gold)}
+[data-cartas="black"] #hand .card:not(.sel){box-shadow:inset 0 0 0 1px #3b3b3b,-2px 0 4px rgba(0,0,0,.6)}
+[data-cartas="black"] .card.sel{box-shadow:inset 0 0 0 1px #3b3b3b,0 0 0 3px var(--gold),0 5px 10px rgba(0,0,0,.5)}
+.look-p{display:flex;gap:6px;justify-content:center;margin:14px 0 4px}
+.look-p .card{width:40px;font-size:15px}
+.look-h{margin:14px 0 0;font-size:14px;color:#c9d1cc}
 </style>
 </head>
 <body>
@@ -185,7 +209,7 @@ button{font:inherit;cursor:pointer}
 <script>
 {
 /* ---------- version: bump with every update, add an entry to CHANGELOG.md and tag the commit ---------- */
-const VERSION='1.9.0';
+const VERSION='1.10.0';
 const RANKS=['★','A','2','3','4','5','6','7','8','9','10','J','Q','K','A'];
 const SUITS=['♠','♥','♣','♦'];
 const NAMES=['Você','Ana','Beto','Caio'];const PNAMES=['Jogador 1','Jogador 2'];
@@ -200,6 +224,12 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const pts=c=>c.r===0?20:c.r===1?15:c.r>=11?10:c.r;
 const vals=c=>c.r===0?[]:c.r===1?[1,14]:[c.r,c.r+13];
 const isRed=c=>c.s===1||c.s===3;
+/* Aparência: table and card designs, saved on this device */
+const LOOK={mesa:{green:'Verde',dark:'Escura'},cartas:{classic:'Clássicas',four:'Quatro cores',black:'Pretas'}},LOOKKEY='pontinho-look';
+let look={mesa:'green',cartas:'classic'};try{const v=JSON.parse(localStorage.getItem(LOOKKEY));if(v&&LOOK.mesa[v.mesa])look.mesa=v.mesa;if(v&&LOOK.cartas[v.cartas])look.cartas=v.cartas;}catch(e){}
+function applyLook(){const d=document.documentElement;d.dataset.mesa=look.mesa;d.dataset.cartas=look.cartas;
+  document.querySelector('meta[name="theme-color"]').content=look.mesa==='dark'?'#000000':'#070b09';}
+applyLook();
 const label=c=>c.r===0?'Coringa':RANKS[c.r]+SUITS[c.s];
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];}return a;}
 function newDeck(){const d=[];let id=0;for(let k=0;k<2;k++){for(let s=0;s<4;s++)for(let r=1;r<=13;r++)d.push({id:id++,r,s});d.push({id:id++,r:0,s:-1});}return shuffle(d);}
@@ -304,7 +334,8 @@ function nextAlive(i){const n=S.players.length;for(let k=1;k<=n;k++){const j=(i+
 function newGame(n,pass,names,level){
   setTimeout(()=>toast('Toque nas cartas e depois na mesa ou no lixo — ou arraste.'),900);
   S={gid:Math.random(),players:[],round:0,over:false,roundEnd:null,mode:pass?'pass':'bots',view:0,handoff:false,level:pass?'mid':(level||'mid')};
-  for(let i=0;i<=n;i++)S.players.push({name:pass?((names&&names[i])||PNAMES[i]):NAMES[i],bot:!pass&&i>0,pts:0,out:false,hand:[]});
+  const bn=['Você',...shuffle(NAMES.slice(1))];   // computer seats change every game, so nobody always plays right after you
+  for(let i=0;i<=n;i++)S.players.push({name:pass?((names&&names[i])||PNAMES[i]):bn[i],bot:!pass&&i>0,pts:0,out:false,hand:[]});
   S.dealer=Math.random()*(n+1)|0;
   startRound();
 }
@@ -338,7 +369,8 @@ function endRound(w){
   S.roundEnd={winner:w,rows};
   const al=alive();
   if((S.mode==='bots'&&S.players[0].out)||al.length<=1){S.over=true;
-    const pool=al.length?al:S.players.map((p,i)=>i);S.champ=pool.sort((a,b)=>S.players[a].pts-S.players[b].pts)[0];}
+    const pool=al.length?al:S.players.map((p,i)=>i);const lo=Math.min(...pool.map(i=>S.players[i].pts)),tie=pool.filter(i=>S.players[i].pts===lo);
+    S.champ=tie[Math.random()*tie.length|0];}   // a tie goes to a random one of the leaders, not always the first seat
   undos=[];sel.clear();busy=false;anim=false;save();render();
 }
 
@@ -612,7 +644,7 @@ async function botTurn(){
 /* ---------- render ---------- */
 function cardHTML(c,cls='',rep){
   if(c.r===0)return`<div class="card jk ${cls}" data-id="${c.id}"><span class="jkw"><i>J</i><i>O</i><i>K</i><i>E</i><i>R</i></span><svg class="jkh" viewBox="0 0 40 50" aria-hidden="true"><path d="M9 27Q7 13 1.5 8Q13 9 17 21Z" fill="#b3262d"/><path d="M15 25Q17 10 20 3Q23 10 25 25Z" fill="#161616"/><path d="M31 27Q33 13 38.5 8Q27 9 23 21Z" fill="#2e5bd8"/><circle cx="2.5" cy="8" r="2.6" fill="#e8b931"/><circle cx="20" cy="3" r="2.6" fill="#e8b931"/><circle cx="37.5" cy="8" r="2.6" fill="#e8b931"/><rect x="8" y="24" width="24" height="5" rx="2" fill="#e8b931"/><circle cx="20" cy="36" r="8" fill="#f6e3c8" stroke="#161616" stroke-width="1"/><circle cx="17" cy="34.5" r="1.1" fill="#161616"/><circle cx="23" cy="34.5" r="1.1" fill="#161616"/><circle cx="20" cy="37" r="1.4" fill="#b3262d"/><path d="M16.5 39.5Q20 42.5 23.5 39.5" stroke="#161616" stroke-width="1" fill="none"/><path d="M9 44L12 47L15 44L18 47L20 44L22 47L25 44L28 47L31 44L28 50L12 50Z" fill="#b3262d"/></svg>${rep?`<span class="jkr">${rep}</span>`:''}</div>`;
-  return`<div class="card ${isRed(c)?'red':''} ${cls}" data-id="${c.id}"><span>${RANKS[c.r]}</span><span class="s">${SUITS[c.s]}</span><span class="big">${SUITS[c.s]}</span></div>`;
+  return`<div class="card s${c.s} ${isRed(c)?'red':''} ${cls}" data-id="${c.id}"><span>${RANKS[c.r]}</span><span class="s">${SUITS[c.s]}</span><span class="big">${SUITS[c.s]}</span></div>`;
 }
 function sortBy(h,mode){
   const k=mode==='suit'?c=>c.r===0?999:c.s*20+(14-c.r):c=>c.r===0?999:(14-c.r)*4+c.s;
@@ -674,7 +706,17 @@ function showMenu(first){
     ${redeal?'<button class="big-btn" data-act="redeal">Nova partida</button>':''}
     <button class="big-btn${redeal?' sec':''}" data-act="setup">Novo jogo</button>
     ${online&&!first?'<button class="big-btn sec" data-act="leave">Sair da sala</button>':''}
-    <button class="big-btn sec" data-act="rules">Como jogar</button>${first?'':'<button class="big-btn sec" data-act="close">Voltar ao jogo</button>'}</div></div>`;
+    <button class="big-btn sec" data-act="rules">Como jogar</button><button class="big-btn sec" data-act="look">Aparência</button>${first?'':'<button class="big-btn sec" data-act="close">Voltar ao jogo</button>'}</div></div>`;
+}
+function showLook(){
+  const ov=$('ov');ov.dataset.menu='1';
+  const seg=k=>`<div class="lvl">${Object.keys(LOOK[k]).map(v=>`<button data-act="lookset" data-k="${k}" data-v="${v}" class="${look[k]===v?'on':''}">${LOOK[k][v]}</button>`).join('')}</div>`;
+  const demo=[{r:1,s:0},{r:7,s:1},{r:12,s:2},{r:3,s:3},{r:0,s:-1}].map((c,i)=>cardHTML({...c,id:-1-i})).join('')+BACK;
+  ov.innerHTML=`<div class="ov"><div class="panel"><h2>Aparência</h2>
+    <p class="look-h">Mesa</p>${seg('mesa')}
+    <p class="look-h">Cartas</p>${seg('cartas')}
+    <div class="look-p">${demo}</div>
+    <button class="big-btn sec" data-act="back">Voltar</button></div></div>`;
 }
 function showSetup(){
   const ov=$('ov');ov.dataset.menu='1';
@@ -954,6 +996,8 @@ document.addEventListener('click',e=>{
     else if(act==='setup'){if(S&&LV[S.level])lvlPick=S.level;showSetup();}
     else if(act==='back2')showMenu(false);
     else if(act==='rules')showRules();
+    else if(act==='look')showLook();
+    else if(act==='lookset'){look[a.dataset.k]=a.dataset.v;try{localStorage.setItem(LOOKKEY,JSON.stringify(look));}catch(e){}applyLook();showLook();}
     else if(act==='close'){delete ov.dataset.menu;ov.innerHTML='';render();}
     else if(act==='back')showMenu(menuFirst);
     else if(act==='next'){if(NET.role==='guest'){netSend({t:'next'});a.disabled=true;a.textContent='Aguardando…';}else startRound();}

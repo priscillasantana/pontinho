@@ -3,6 +3,16 @@
 Cada atualização ganha um número de versão (`maior.menor.correção`), uma entrada aqui e uma tag no GitHub.
 No jogo, a versão aparece no canto inferior direito.
 
+## v1.10.0 — 24/11/2026
+- Nova tela Menu → Aparência:
+  - Mesa: Verde (a de sempre) ou Escura, toda preta.
+  - Cartas: Clássicas, Quatro cores (♣ verde e ♦ azul, para não confundir os naipes) ou Pretas, com fundo preto.
+- A escolha fica salva no aparelho.
+
+## v1.9.1 — 24/11/2026
+- Os lugares do computador mudam a cada jogo: nem sempre é a Ana que joga logo depois de você (quem joga depois pega primeiro o seu descarte).
+- Empate de pontos no fim do jogo é sorteado entre os empatados, em vez de ir sempre para o primeiro da lista.
+
 ## v1.9.0 — 23/11/2026
 - A sequência pode virar no Ás: Q-K-A-2-3 do mesmo naipe vale. Dá para encaixar o 2 depois de um Ás da mesa, ou o K antes de um A-2-3.
 - O computador também monta e completa sequências assim.
